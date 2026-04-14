@@ -168,7 +168,6 @@ if st.session_state.results_data:
         # --- KPI Metric Cards ---
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            # Calculate daily price change for the metric delta
             prev_close = hist_df['Close'].iloc[-2]
             curr_close = hist_df['Close'].iloc[-1]
             pct_change = ((curr_close - prev_close) / prev_close) * 100
@@ -181,7 +180,7 @@ if st.session_state.results_data:
             st.metric("Support / Resistance", f"{selected_row['Floor']} / {selected_row['Ceiling']}")
 
         st.write("") # Adds a little breathing room before the chart
-        
+
         # --- Professional Stacked Chart ---
         sma_buys = hist_df[hist_df['SMA_Buy']]
         sma_sells = hist_df[hist_df['SMA_Sell']]
@@ -192,7 +191,7 @@ if st.session_state.results_data:
             rows=2, cols=1, 
             shared_xaxes=True, 
             vertical_spacing=0.05, 
-            row_heights=[0.7, 0.3]
+            row_heights=[0.6, 0.4] # <-- INCREASING MACD CHART RATIO TO 40%
         )
 
         # Top Chart: Price Action
@@ -212,11 +211,11 @@ if st.session_state.results_data:
 
         # Styling the Layout
         fig.update_layout(
-            height=650,
+            height=800, # <-- INCREASING OVERALL HEIGHT FOR BETTER READABILITY
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             margin=dict(l=10, r=10, t=10, b=10),
-            plot_bgcolor='rgba(0,0,0,0)' # Transparent background for a cleaner integration with Streamlit
+            plot_bgcolor='rgba(0,0,0,0)' 
         )
         
         # Gridlines
