@@ -4,6 +4,8 @@ import pandas as pd
 import pandas_ta as ta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from streamlit_autorefresh import st_autorefresh
+from datetime import datetime
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Pro Technical Analysis", page_icon="📈", layout="wide")
@@ -13,6 +15,10 @@ if 'stock_data' not in st.session_state:
     st.session_state.stock_data = {}
 if 'results_data' not in st.session_state:
     st.session_state.results_data = []
+if 'last_updated' not in st.session_state:
+    st.session_state.last_updated = "Never"
+if 'last_timer_count' not in st.session_state:
+    st.session_state.last_timer_count = 0
 
 # ==========================================
 # SIDEBAR: CONTROLS & INPUTS
@@ -41,7 +47,37 @@ with st.sidebar:
         st.caption("⚠️ *Yahoo limits 30m data to 60 days, and 1h data to 2 years.*")
         
     st.divider()
-    run_button = st.button("🚀 Run Analysis", type="primary", use_container_width=True)
+    
+    # --- Auto-Refresh Controls ---
+    st.subheader("⏱️ Automation")
+    auto_refresh = st.toggle("Enable Auto-Refresh")
+    
+    is_timer_tick = False
+    if auto_refresh:
+        refresh_interval = st.selectbox(
+            "Refresh Frequency:", 
+            ["1 Minute", "5 Minutes", "15 Minutes", "30 Minutes"], 
+            index=1
+        )
+        
+        # Map selection to milliseconds for the st_autorefresh component
+        interval_mapping = {
+            "1 Minute": 60 * 1000,
+            "5 Minutes": 5 * 60 * 1000,
+            "15 Minutes": 15 * 60 * 1000,
+            "30 Minutes": 30 * 60 * 1000
+        }
+        
+        # This component returns a counter that increases every time the interval passes
+        timer_count = st_autorefresh(interval=interval_mapping[refresh_interval], key="data_refresh")
+        
+        # Check if the rerun was caused by the timer ticking (and not the user just clicking around)
+        if timer_count != st.session_state.last_timer_count:
+            st.session_state.last_timer_count = timer_count
+            is_timer_tick = True
+
+    st.divider()
+    run_button = st.button("🚀 Run Analysis / Update Now", type="primary", use_container_width=True)
 
 # ==========================================
 # MAIN CANVAS: TITLE & DATA LOGIC
@@ -49,7 +85,8 @@ with st.sidebar:
 st.title("📈 Pro Technical Analysis Dashboard")
 st.markdown("Analyze market trends, identify momentum shifts, and visualize actionable **Buy/Sell signals**.")
 
-if run_button:
+# Trigger data fetch if button is clicked OR if the auto-refresh timer just ticked
+if run_button or is_timer_tick:
     if not tickers:
         st.sidebar.warning("Please enter at least one ticker.")
     else:
@@ -127,8 +164,10 @@ if run_button:
                 except Exception as e:
                     st.error(f"Error for {ticker}: {e}")
 
+            # Update Session State
             st.session_state.stock_data = stock_data_dict
             st.session_state.results_data = results
+            st.session_state.last_updated = datetime.now().strftime("%I:%M:%S %p")
 
 # ==========================================
 # MAIN CANVAS: DASHBOARD DISPLAY
@@ -145,8 +184,14 @@ if st.session_state.results_data:
     
     styled_df = df_results.style.map(style_recommendations, subset=['SMA Rec', 'MACD Rec'])
 
-    st.subheader("Market Overview", divider="gray")
-    st.caption("💡 **Click on any row** below to load its interactive charts and detailed metrics.")
+    col_title, col_time = st.columns([3, 1])
+    with col_title:
+        st.subheader("Market Overview", divider="gray")
+    with col_time:
+        st.write("") # Alignment spacing
+        st.caption(f"🔄 **Last Updated:** {st.session_state.last_updated}")
+        
+    st.info("💡 **Click on any row** below to load its interactive charts and detailed metrics.")
     
     event = st.dataframe(
         styled_df, 
@@ -179,7 +224,7 @@ if st.session_state.results_data:
         with col4:
             st.metric("Support / Resistance", f"{selected_row['Floor']} / {selected_row['Ceiling']}")
 
-        st.write("") # Adds a little breathing room before the chart
+        st.write("")
 
         # --- Professional Stacked Chart ---
         sma_buys = hist_df[hist_df['SMA_Buy']]
@@ -191,7 +236,7 @@ if st.session_state.results_data:
             rows=2, cols=1, 
             shared_xaxes=True, 
             vertical_spacing=0.05, 
-            row_heights=[0.6, 0.4] # <-- INCREASING MACD CHART RATIO TO 40%
+            row_heights=[0.6, 0.4] 
         )
 
         # Top Chart: Price Action
@@ -211,7 +256,7 @@ if st.session_state.results_data:
 
         # Styling the Layout
         fig.update_layout(
-            height=800, # <-- INCREASING OVERALL HEIGHT FOR BETTER READABILITY
+            height=800,
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             margin=dict(l=10, r=10, t=10, b=10),
