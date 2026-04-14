@@ -168,21 +168,23 @@ if st.session_state.results_data:
             shared_xaxes=True, 
             vertical_spacing=0.05, 
             row_heights=[0.7, 0.3],
-            subplot_titles=("Price Action (Candlesticks) & SMAs", "MACD & Momentum")
+            subplot_titles=("Price Action (Close) & SMAs", "MACD & Momentum")
         )
 
-        # --- Top Chart: Price Action ---
-        # 1. Candlestick
-        fig.add_trace(go.Candlestick(
-            x=hist_df.index, open=hist_df['Open'], high=hist_df['High'], 
-            low=hist_df['Low'], close=hist_df['Close'], name='Price'
+        # --- Top Chart: Price Action (Line Chart) ---
+        # 1. Close Price Line
+        fig.add_trace(go.Scatter(
+            x=hist_df.index, y=hist_df['Close'], 
+            mode='lines', name='Close Price', 
+            line=dict(color='white', width=2) # Using white/light gray to stand out against standard dark/light themes
         ), row=1, col=1)
 
         # 2. SMAs
-        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_18'], line=dict(color='blue', width=1.5), name='SMA(18)'), row=1, col=1)
-        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_50'], line=dict(color='orange', width=1.5), name='SMA(50)'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_18'], line=dict(color='#00BFFF', width=1.5), name='SMA(18)'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_50'], line=dict(color='#FFA500', width=1.5), name='SMA(50)'), row=1, col=1)
 
         # 3. MACD Signals plotted on the Price Chart
+        # We still use the 'Low' and 'High' columns just to offset the arrows slightly so they don't cover the price line
         fig.add_trace(go.Scatter(
             x=macd_buys.index, y=macd_buys['Low'] * 0.98, mode='markers', 
             name='MACD Buy Signal', marker=dict(symbol='triangle-up', size=14, color='#00FF00', line=dict(width=1, color='darkgreen'))
@@ -197,13 +199,12 @@ if st.session_state.results_data:
         colors = ['#2ca02c' if val >= 0 else '#d62728' for val in hist_df['MACDh_12_26_9']]
         
         fig.add_trace(go.Bar(x=hist_df.index, y=hist_df['MACDh_12_26_9'], marker_color=colors, name='MACD Histogram'), row=2, col=1)
-        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACD_12_26_9'], line=dict(color='blue', width=1.5), name='MACD Line'), row=2, col=1)
-        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACDs_12_26_9'], line=dict(color='orange', width=1.5), name='Signal Line'), row=2, col=1)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACD_12_26_9'], line=dict(color='#00BFFF', width=1.5), name='MACD Line'), row=2, col=1)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACDs_12_26_9'], line=dict(color='#FFA500', width=1.5), name='Signal Line'), row=2, col=1)
 
         # Clean up layout
         fig.update_layout(
             height=700,
-            xaxis_rangeslider_visible=False, # Hides the default candlestick slider for a cleaner look
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             margin=dict(l=20, r=20, t=50, b=20)
