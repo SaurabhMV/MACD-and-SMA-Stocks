@@ -6,7 +6,14 @@ import pandas_ta as ta
 # --- Page Configuration ---
 st.set_page_config(page_title="Stock Technical Analysis", page_icon="📈", layout="wide")
 st.title("📈 Stock Technical Analysis Dashboard")
-st.write("Analyze multiple stocks using SMA, MACD, RSI, ADX, and identify recent Support/Resistance levels.")
+st.write("Analyze multiple stocks and **click on any row in the table** to view its SMA and MACD charts.")
+
+# --- Session State Initialization ---
+# We use session state to store data so the app doesn't re-download data when we click a row
+if 'stock_data' not in st.session_state:
+    st.session_state.stock_data = {}
+if 'results_data' not in st.session_state:
+    st.session_state.results_data = []
 
 # --- User Inputs ---
 tickers_input = st.text_input("Enter Stock Tickers (comma-separated):", "AAPL, MSFT, TSLA, NVDA")
@@ -19,41 +26,34 @@ if st.button("Run Analysis", type="primary"):
     else:
         with st.spinner("Fetching market data and calculating indicators..."):
             results = []
+            stock_data_dict = {}
 
             for ticker in tickers:
                 try:
-                    # Fetch 1 year of daily data to ensure enough history for the 50-day SMA and ADX
                     df = yf.download(ticker, period="1y", progress=False)
 
                     if df.empty or len(df) < 50:
                         st.error(f"Not enough historical data for {ticker}. Skipping.")
                         continue
                     
-                    # Handle yfinance multi-index columns (happens in newer yfinance versions)
                     if isinstance(df.columns, pd.MultiIndex):
                         df.columns = df.columns.get_level_values(0)
 
-                    # --- 1. Simple Moving Averages (18 & 50) ---
+                    # Calculate Indicators
                     df.ta.sma(length=18, append=True)
                     df.ta.sma(length=50, append=True)
-
-                    # --- 2. MACD (Fast 12, Slow 26, Signal 9) ---
                     df.ta.macd(append=True)
-
-                    # --- 3. Wilder's RSI (14) ---
                     df.ta.rsi(length=14, append=True)
-
-                    # --- 4. ADX Strength (14) ---
                     df.ta.adx(length=14, append=True)
 
-                    # --- 5. Support & Resistance (20-day rolling High/Low) ---
                     df['Support_20d'] = df['Low'].rolling(window=20).min()
                     df['Resistance_20d'] = df['High'].rolling(window=20).max()
 
-                    # Extract the most recent day's values
-                    latest = df.iloc[-1]
+                    # Save dataframe for charting later
+                    stock_data_dict[ticker] = df
 
-                    # Map pandas_ta default column names
+                    # Extract latest values
+                    latest = df.iloc[-1]
                     current_price = latest['Close']
                     sma_18 = latest['SMA_18']
                     sma_50 = latest['SMA_50']
@@ -64,14 +64,10 @@ if st.button("Run Analysis", type="primary"):
                     support = latest['Support_20d']
                     resistance = latest['Resistance_20d']
 
-                    # --- Recommendations Logic ---
-                    # SMA Rec: Bullish if faster SMA is above slower SMA
+                    # Recommendations
                     sma_rec = "Buy" if sma_18 > sma_50 else "Sell"
-                    
-                    # MACD Rec: Bullish if MACD line is above the Signal line
                     macd_rec = "Buy" if macd_line > macd_signal else "Sell"
 
-                    # Contextualize ADX Strength (Trend strength, regardless of direction)
                     if pd.isna(adx):
                         trend_strength = "N/A"
                     elif adx > 25:
@@ -81,7 +77,6 @@ if st.button("Run Analysis", type="primary"):
                     else:
                         trend_strength = "Weak/Sideways"
 
-                    # Append to results
                     results.append({
                         "Ticker": ticker,
                         "Price": f"${current_price:.2f}",
@@ -100,23 +95,63 @@ if st.button("Run Analysis", type="primary"):
                 except Exception as e:
                     st.error(f"Error calculating data for {ticker}: {e}")
 
-            # --- Display Results ---
-            if results:
-                df_results = pd.DataFrame(results)
+            # Save to session state to persist after button click
+            st.session_state.stock_data = stock_data_dict
+            st.session_state.results_data = results
 
-                # Apply styling to highlight Buy/Sell recommendations
-                def style_recommendations(val):
-                    if val == 'Buy':
-                        return 'color: #00FF00; font-weight: bold;' # Green
-                    elif val == 'Sell':
-                        return 'color: #FF0000; font-weight: bold;' # Red
-                    return ''
-                
-                # Apply styling to the dataframe (compatible with modern pandas)
-                styled_df = df_results.style.map(
-                    style_recommendations, 
-                    subset=['SMA Rec', 'MACD Rec']
-                )
+# --- Display Results and Charts ---
+if st.session_state.results_data:
+    df_results = pd.DataFrame(st.session_state.results_data)
 
-                st.subheader("Technical Analysis Results")
-                st.dataframe(styled_df, use_container_width=True, hide_index=True)
+    def style_recommendations(val):
+        if val == 'Buy':
+            return 'color: #00FF00; font-weight: bold;'
+        elif val == 'Sell':
+            return 'color: #FF0000; font-weight: bold;'
+        return ''
+    
+    styled_df = df_results.style.map(
+        style_recommendations, 
+        subset=['SMA Rec', 'MACD Rec']
+    )
+
+    st.subheader("Technical Analysis Results")
+    st.info("💡 **Click on any row** below to view the SMA and MACD charts for that stock.")
+    
+    # Render the interactive dataframe
+    event = st.dataframe(
+        styled_df, 
+        use_container_width=True, 
+        hide_index=True,
+        on_select="rerun",          # Triggers a rerun when a row is clicked
+        selection_mode="single_row" # Restricts selection to one row at a time
+    )
+
+    # --- Chart Generation Logic ---
+    # Check if the user has selected a row
+    if event.selection.rows:
+        # Get the index of the selected row
+        selected_idx = event.selection.rows[0]
+        
+        # Look up the ticker symbol from that row
+        selected_ticker = df_results.iloc[selected_idx]['Ticker']
+        
+        st.divider()
+        st.subheader(f"📊 Detailed Charts for {selected_ticker}")
+        
+        # Retrieve the historical data for the selected ticker from session state
+        hist_df = st.session_state.stock_data[selected_ticker]
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.write("**Price vs SMA (18/50)**")
+            # Filter the dataframe to only the columns we want to plot
+            sma_chart_data = hist_df[['Close', 'SMA_18', 'SMA_50']]
+            st.line_chart(sma_chart_data)
+
+        with col2:
+            st.write("**MACD Trend**")
+            # MACD Line and Signal Line
+            macd_chart_data = hist_df[['MACD_12_26_9', 'MACDs_12_26_9']]
+            st.line_chart(macd_chart_data)
