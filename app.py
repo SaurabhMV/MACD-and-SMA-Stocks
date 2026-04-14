@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 # --- Page Configuration ---
 st.set_page_config(page_title="Stock Technical Analysis", page_icon="📈", layout="wide")
 st.title("📈 Stock Technical Analysis Dashboard")
-st.write("Analyze multiple stocks and **click on any row in the table** to view its SMA and MACD charts with Buy/Sell signals.")
+st.write("Analyze multiple stocks, adjust timeframes, and **click on any row in the table** to view its SMA and MACD charts.")
 
 # --- Session State Initialization ---
 if 'stock_data' not in st.session_state:
@@ -15,25 +15,43 @@ if 'stock_data' not in st.session_state:
 if 'results_data' not in st.session_state:
     st.session_state.results_data = []
 
-# --- User Inputs ---
-tickers_input = st.text_input("Enter Stock Tickers (comma-separated):", "AAPL, MSFT, TSLA, NVDA")
-tickers = [ticker.strip().upper() for ticker in tickers_input.split(",") if ticker.strip()]
+# --- User Inputs (Tickers, Period, Interval) ---
+col1, col2, col3 = st.columns([2, 1, 1])
+with col1:
+    tickers_input = st.text_input("Enter Stock Tickers (comma-separated):", "AAPL, MSFT, TSLA, NVDA")
+    tickers = [ticker.strip().upper() for ticker in tickers_input.split(",") if ticker.strip()]
+
+with col2:
+    # 3mo is the minimum safe period for a daily 50-SMA (approx 63 trading days)
+    selected_period = st.selectbox(
+        "Historical Period:", 
+        ["3mo", "6mo", "1y", "2y", "5y", "10y", "max"], 
+        index=2 # Defaults to '1y'
+    )
+
+with col3:
+    selected_interval = st.selectbox(
+        "Chart Interval:", 
+        ["1d", "1wk", "1mo"], 
+        index=0 # Defaults to '1d'
+    )
 
 # --- Analysis Logic ---
 if st.button("Run Analysis", type="primary"):
     if not tickers:
         st.warning("Please enter at least one ticker.")
     else:
-        with st.spinner("Fetching market data and calculating indicators..."):
+        with st.spinner(f"Fetching {selected_period} of {selected_interval} data and calculating indicators..."):
             results = []
             stock_data_dict = {}
 
             for ticker in tickers:
                 try:
-                    df = yf.download(ticker, period="1y", progress=False)
+                    # Pass the user's selected period and interval to yfinance
+                    df = yf.download(ticker, period=selected_period, interval=selected_interval, progress=False)
 
                     if df.empty or len(df) < 50:
-                        st.error(f"Not enough historical data for {ticker}. Skipping.")
+                        st.error(f"Not enough data for {ticker} using a {selected_period} period at {selected_interval} intervals. (Need at least 50 data points). Skipping.")
                         continue
                     
                     if isinstance(df.columns, pd.MultiIndex):
