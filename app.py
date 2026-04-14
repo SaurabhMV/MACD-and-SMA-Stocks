@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
+import plotly.graph_objects as go
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Stock Technical Analysis", page_icon="📈", layout="wide")
@@ -9,7 +10,6 @@ st.title("📈 Stock Technical Analysis Dashboard")
 st.write("Analyze multiple stocks and **click on any row in the table** to view its SMA and MACD charts.")
 
 # --- Session State Initialization ---
-# We use session state to store data so the app doesn't re-download data when we click a row
 if 'stock_data' not in st.session_state:
     st.session_state.stock_data = {}
 if 'results_data' not in st.session_state:
@@ -42,7 +42,7 @@ if st.button("Run Analysis", type="primary"):
                     # Calculate Indicators
                     df.ta.sma(length=18, append=True)
                     df.ta.sma(length=50, append=True)
-                    df.ta.macd(append=True)
+                    df.ta.macd(append=True) # Generates MACD, Signal, and Histogram (MACDh)
                     df.ta.rsi(length=14, append=True)
                     df.ta.adx(length=14, append=True)
 
@@ -95,7 +95,7 @@ if st.button("Run Analysis", type="primary"):
                 except Exception as e:
                     st.error(f"Error calculating data for {ticker}: {e}")
 
-            # Save to session state to persist after button click
+            # Save to session state
             st.session_state.stock_data = stock_data_dict
             st.session_state.results_data = results
 
@@ -116,42 +116,67 @@ if st.session_state.results_data:
     )
 
     st.subheader("Technical Analysis Results")
-    st.info("💡 **Click on any row** below to view the SMA and MACD charts for that stock.")
+    st.info("💡 **Click on any row** below to view the interactive SMA and MACD charts.")
     
-    # Render the interactive dataframe
     event = st.dataframe(
         styled_df, 
         use_container_width=True, 
         hide_index=True,
-        on_select="rerun",          # Triggers a rerun when a row is clicked
-        selection_mode="single-row" # Restricts selection to one row at a time
+        on_select="rerun",          
+        selection_mode="single-row" 
     )
 
-    # --- Chart Generation Logic ---
-    # Check if the user has selected a row
+    # --- Upgraded Chart Generation Logic (Plotly) ---
     if event.selection.rows:
-        # Get the index of the selected row
         selected_idx = event.selection.rows[0]
-        
-        # Look up the ticker symbol from that row
         selected_ticker = df_results.iloc[selected_idx]['Ticker']
         
         st.divider()
         st.subheader(f"📊 Detailed Charts for {selected_ticker}")
         
-        # Retrieve the historical data for the selected ticker from session state
         hist_df = st.session_state.stock_data[selected_ticker]
 
         col1, col2 = st.columns(2)
 
         with col1:
-            st.write("**Price vs SMA (18/50)**")
-            # Filter the dataframe to only the columns we want to plot
-            sma_chart_data = hist_df[['Close', 'SMA_18', 'SMA_50']]
-            st.line_chart(sma_chart_data)
+            st.markdown(f"**Price vs SMA (18/50) - {selected_ticker}**")
+            
+            fig_sma = go.Figure()
+            # Plot Close Price
+            fig_sma.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], name='Close Price', line=dict(color='gray', width=1.5)))
+            # Plot SMAs
+            fig_sma.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_18'], name='SMA(18) Fast', line=dict(color='blue', width=2)))
+            fig_sma.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_50'], name='SMA(50) Slow', line=dict(color='orange', width=2)))
+            
+            fig_sma.update_layout(
+                xaxis_title="Date",
+                yaxis_title="Price ($)",
+                hovermode="x unified",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(l=0, r=0, t=30, b=0)
+            )
+            st.plotly_chart(fig_sma, use_container_width=True)
 
         with col2:
-            st.write("**MACD Trend**")
-            # MACD Line and Signal Line
-            macd_chart_data = hist_df[['MACD_12_26_9', 'MACDs_12_26_9']]
-            st.line_chart(macd_chart_data)
+            st.markdown(f"**MACD & Momentum - {selected_ticker}**")
+            
+            fig_macd = go.Figure()
+            
+            # Determine color for MACD Histogram (Green if >= 0, Red if < 0)
+            colors = ['#2ca02c' if val >= 0 else '#d62728' for val in hist_df['MACDh_12_26_9']]
+            
+            # Plot Histogram (Momentum Bars)
+            fig_macd.add_trace(go.Bar(x=hist_df.index, y=hist_df['MACDh_12_26_9'], name='Histogram', marker_color=colors))
+            
+            # Plot MACD Line and Signal Line
+            fig_macd.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACD_12_26_9'], name='MACD Line', line=dict(color='blue', width=2)))
+            fig_macd.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACDs_12_26_9'], name='Signal Line', line=dict(color='orange', width=2)))
+            
+            fig_macd.update_layout(
+                xaxis_title="Date",
+                yaxis_title="MACD Value",
+                hovermode="x unified",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(l=0, r=0, t=30, b=0)
+            )
+            st.plotly_chart(fig_macd, use_container_width=True)
