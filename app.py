@@ -180,8 +180,8 @@ if st.session_state.results_data:
         with col4:
             st.metric("Support / Resistance", f"{selected_row['Floor']} / {selected_row['Ceiling']}")
 
-        st.spacer() # Adds a little breathing room before the chart
-
+        st.write("") # Adds a little breathing room before the chart
+        
         # --- Professional Stacked Chart ---
         sma_buys = hist_df[hist_df['SMA_Buy']]
         sma_sells = hist_df[hist_df['SMA_Sell']]
