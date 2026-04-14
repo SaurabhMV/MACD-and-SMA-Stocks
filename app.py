@@ -6,9 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # --- Page Configuration ---
-st.set_page_config(page_title="Stock Technical Analysis", page_icon="📈", layout="wide")
-st.title("📈 Stock Technical Analysis Dashboard")
-st.write("Analyze multiple stocks, adjust timeframes, and **click on any row in the table** to view detailed price action and MACD signals.")
+st.set_page_config(page_title="Pro Technical Analysis", page_icon="📈", layout="wide")
 
 # --- Session State Initialization ---
 if 'stock_data' not in st.session_state:
@@ -16,35 +14,46 @@ if 'stock_data' not in st.session_state:
 if 'results_data' not in st.session_state:
     st.session_state.results_data = []
 
-# --- User Inputs (Tickers, Period, Interval) ---
-col1, col2, col3 = st.columns([2, 1, 1])
-with col1:
+# ==========================================
+# SIDEBAR: CONTROLS & INPUTS
+# ==========================================
+with st.sidebar:
+    st.title("⚙️ Dashboard Controls")
+    st.write("Configure your analysis parameters below.")
+    st.divider()
+    
     tickers_input = st.text_input("Enter Stock Tickers (comma-separated):", "AAPL, MSFT, TSLA, NVDA")
     tickers = [ticker.strip().upper() for ticker in tickers_input.split(",") if ticker.strip()]
 
-with col2:
     selected_period = st.selectbox(
         "Historical Period:", 
         ["1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "max"], 
-        index=3 # Defaults to '1y'
+        index=3
     )
 
-with col3:
     selected_interval = st.selectbox(
         "Chart Interval:", 
         ["30m", "1h", "1d", "1wk", "1mo"], 
-        index=2 # Defaults to '1d'
+        index=2
     )
 
-if selected_interval in ["30m", "1h"]:
-    st.caption("⚠️ *Note: Yahoo Finance limits 30m data to the last 60 days, and 1h data to the last 2 years.*")
+    if selected_interval in ["30m", "1h"]:
+        st.caption("⚠️ *Yahoo limits 30m data to 60 days, and 1h data to 2 years.*")
+        
+    st.divider()
+    run_button = st.button("🚀 Run Analysis", type="primary", use_container_width=True)
 
-# --- Analysis Logic ---
-if st.button("Run Analysis", type="primary"):
+# ==========================================
+# MAIN CANVAS: TITLE & DATA LOGIC
+# ==========================================
+st.title("📈 Pro Technical Analysis Dashboard")
+st.markdown("Analyze market trends, identify momentum shifts, and visualize actionable **Buy/Sell signals**.")
+
+if run_button:
     if not tickers:
-        st.warning("Please enter at least one ticker.")
+        st.sidebar.warning("Please enter at least one ticker.")
     else:
-        with st.spinner(f"Fetching {selected_period} of {selected_interval} data and calculating indicators..."):
+        with st.spinner(f"Fetching {selected_period} of {selected_interval} data..."):
             results = []
             stock_data_dict = {}
 
@@ -53,13 +62,13 @@ if st.button("Run Analysis", type="primary"):
                     df = yf.download(ticker, period=selected_period, interval=selected_interval, progress=False)
 
                     if df.empty or len(df) < 50:
-                        st.error(f"Not enough data for {ticker}. Try a shorter period for intraday intervals.")
+                        st.toast(f"Not enough data for {ticker}. Skipped.", icon="⚠️")
                         continue
                     
                     if isinstance(df.columns, pd.MultiIndex):
                         df.columns = df.columns.get_level_values(0)
 
-                    # Calculate Indicators
+                    # Indicators
                     df.ta.sma(length=18, append=True)
                     df.ta.sma(length=50, append=True)
                     df.ta.macd(append=True) 
@@ -72,7 +81,6 @@ if st.button("Run Analysis", type="primary"):
                     # Crossovers
                     df['SMA_Buy'] = (df['SMA_18'] > df['SMA_50']) & (df['SMA_18'].shift(1) <= df['SMA_50'].shift(1))
                     df['SMA_Sell'] = (df['SMA_18'] < df['SMA_50']) & (df['SMA_18'].shift(1) >= df['SMA_50'].shift(1))
-
                     df['MACD_Buy'] = (df['MACD_12_26_9'] > df['MACDs_12_26_9']) & (df['MACD_12_26_9'].shift(1) <= df['MACDs_12_26_9'].shift(1))
                     df['MACD_Sell'] = (df['MACD_12_26_9'] < df['MACDs_12_26_9']) & (df['MACD_12_26_9'].shift(1) >= df['MACDs_12_26_9'].shift(1))
 
@@ -99,7 +107,7 @@ if st.button("Run Analysis", type="primary"):
                     elif adx > 20:
                         trend_strength = "Moderate"
                     else:
-                        trend_strength = "Weak/Sideways"
+                        trend_strength = "Weak"
 
                     results.append({
                         "Ticker": ticker,
@@ -110,33 +118,35 @@ if st.button("Run Analysis", type="primary"):
                         "MACD": round(macd_line, 2),
                         "MACD Signal": round(macd_signal, 2),
                         "MACD Rec": macd_rec,
-                        "Wilder's RSI": round(rsi, 2),
-                        "ADX (Strength)": f"{round(adx, 2)} ({trend_strength})",
-                        "Support (Floor)": f"${support:.2f}",
-                        "Resistance (Ceil)": f"${resistance:.2f}"
+                        "RSI (14)": round(rsi, 2),
+                        "ADX Trend": f"{round(adx, 2)} ({trend_strength})",
+                        "Floor": f"${support:.2f}",
+                        "Ceiling": f"${resistance:.2f}"
                     })
 
                 except Exception as e:
-                    st.error(f"Error calculating data for {ticker}: {e}")
+                    st.error(f"Error for {ticker}: {e}")
 
             st.session_state.stock_data = stock_data_dict
             st.session_state.results_data = results
 
-# --- Display Results and Charts ---
+# ==========================================
+# MAIN CANVAS: DASHBOARD DISPLAY
+# ==========================================
 if st.session_state.results_data:
     df_results = pd.DataFrame(st.session_state.results_data)
 
     def style_recommendations(val):
         if val == 'Buy':
-            return 'color: #00FF00; font-weight: bold;'
+            return 'color: #00FF00; font-weight: bold; background-color: rgba(0, 255, 0, 0.1);'
         elif val == 'Sell':
-            return 'color: #FF0000; font-weight: bold;'
+            return 'color: #FF0000; font-weight: bold; background-color: rgba(255, 0, 0, 0.1);'
         return ''
     
     styled_df = df_results.style.map(style_recommendations, subset=['SMA Rec', 'MACD Rec'])
 
-    st.subheader("Technical Analysis Results")
-    st.info("💡 **Click on any row** below to view the interactive Price Action and MACD charts.")
+    st.subheader("Market Overview", divider="gray")
+    st.caption("💡 **Click on any row** below to load its interactive charts and detailed metrics.")
     
     event = st.dataframe(
         styled_df, 
@@ -146,71 +156,72 @@ if st.session_state.results_data:
         selection_mode="single-row" 
     )
 
-    # --- Unified Professional Chart Logic ---
+    # --- Interactive Selected Details ---
     if event.selection.rows:
         selected_idx = event.selection.rows[0]
-        selected_ticker = df_results.iloc[selected_idx]['Ticker']
-        
-        st.divider()
-        st.subheader(f"📊 {selected_ticker} - Price Action & MACD Signals")
-        
+        selected_row = df_results.iloc[selected_idx]
+        selected_ticker = selected_row['Ticker']
         hist_df = st.session_state.stock_data[selected_ticker]
+        
+        st.subheader(f"📊 {selected_ticker} Deep Dive", divider="blue")
+        
+        # --- KPI Metric Cards ---
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            # Calculate daily price change for the metric delta
+            prev_close = hist_df['Close'].iloc[-2]
+            curr_close = hist_df['Close'].iloc[-1]
+            pct_change = ((curr_close - prev_close) / prev_close) * 100
+            st.metric("Latest Price", f"${curr_close:.2f}", f"{pct_change:.2f}%")
+        with col2:
+            st.metric("RSI (Momentum)", selected_row['RSI (14)'], "Overbought > 70" if float(selected_row['RSI (14)']) > 70 else "Oversold < 30" if float(selected_row['RSI (14)']) < 30 else "Neutral", delta_color="off")
+        with col3:
+            st.metric("ADX (Trend Strength)", selected_row['ADX Trend'].split(" ")[0], selected_row['ADX Trend'].split(" ")[1].replace("(","").replace(")",""), delta_color="normal" if "Strong" in selected_row['ADX Trend'] else "off")
+        with col4:
+            st.metric("Support / Resistance", f"{selected_row['Floor']} / {selected_row['Ceiling']}")
 
-        # Extract Buy/Sell Dates
+        st.spacer() # Adds a little breathing room before the chart
+
+        # --- Professional Stacked Chart ---
         sma_buys = hist_df[hist_df['SMA_Buy']]
         sma_sells = hist_df[hist_df['SMA_Sell']]
         macd_buys = hist_df[hist_df['MACD_Buy']]
         macd_sells = hist_df[hist_df['MACD_Sell']]
 
-        # Create Subplots: Row 1 = Price (70%), Row 2 = MACD (30%)
         fig = make_subplots(
             rows=2, cols=1, 
             shared_xaxes=True, 
             vertical_spacing=0.05, 
-            row_heights=[0.7, 0.3],
-            subplot_titles=("Price Action (Close) & SMAs", "MACD & Momentum")
+            row_heights=[0.7, 0.3]
         )
 
-        # --- Top Chart: Price Action (Line Chart) ---
-        # 1. Close Price Line
-        fig.add_trace(go.Scatter(
-            x=hist_df.index, y=hist_df['Close'], 
-            mode='lines', name='Close Price', 
-            line=dict(color='white', width=2) # Using white/light gray to stand out against standard dark/light themes
-        ), row=1, col=1)
+        # Top Chart: Price Action
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], mode='lines', name='Close Price', line=dict(color='white', width=2)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_18'], line=dict(color='#00BFFF', width=1.5), name='SMA(18) Fast'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_50'], line=dict(color='#FFA500', width=1.5), name='SMA(50) Slow'), row=1, col=1)
 
-        # 2. SMAs
-        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_18'], line=dict(color='#00BFFF', width=1.5), name='SMA(18)'), row=1, col=1)
-        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_50'], line=dict(color='#FFA500', width=1.5), name='SMA(50)'), row=1, col=1)
+        # MACD Signals on Price
+        fig.add_trace(go.Scatter(x=macd_buys.index, y=macd_buys['Low'] * 0.98, mode='markers', name='MACD Buy', marker=dict(symbol='triangle-up', size=14, color='#00FF00', line=dict(width=1, color='darkgreen'))), row=1, col=1)
+        fig.add_trace(go.Scatter(x=macd_sells.index, y=macd_sells['High'] * 1.02, mode='markers', name='MACD Sell', marker=dict(symbol='triangle-down', size=14, color='#FF0000', line=dict(width=1, color='darkred'))), row=1, col=1)
 
-        # 3. MACD Signals plotted on the Price Chart
-        # We still use the 'Low' and 'High' columns just to offset the arrows slightly so they don't cover the price line
-        fig.add_trace(go.Scatter(
-            x=macd_buys.index, y=macd_buys['Low'] * 0.98, mode='markers', 
-            name='MACD Buy Signal', marker=dict(symbol='triangle-up', size=14, color='#00FF00', line=dict(width=1, color='darkgreen'))
-        ), row=1, col=1)
-        
-        fig.add_trace(go.Scatter(
-            x=macd_sells.index, y=macd_sells['High'] * 1.02, mode='markers', 
-            name='MACD Sell Signal', marker=dict(symbol='triangle-down', size=14, color='#FF0000', line=dict(width=1, color='darkred'))
-        ), row=1, col=1)
-
-        # --- Bottom Chart: MACD ---
+        # Bottom Chart: MACD
         colors = ['#2ca02c' if val >= 0 else '#d62728' for val in hist_df['MACDh_12_26_9']]
-        
         fig.add_trace(go.Bar(x=hist_df.index, y=hist_df['MACDh_12_26_9'], marker_color=colors, name='MACD Histogram'), row=2, col=1)
         fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACD_12_26_9'], line=dict(color='#00BFFF', width=1.5), name='MACD Line'), row=2, col=1)
         fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACDs_12_26_9'], line=dict(color='#FFA500', width=1.5), name='Signal Line'), row=2, col=1)
 
-        # Clean up layout
+        # Styling the Layout
         fig.update_layout(
-            height=700,
+            height=650,
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            margin=dict(l=20, r=20, t=50, b=20)
+            margin=dict(l=10, r=10, t=10, b=10),
+            plot_bgcolor='rgba(0,0,0,0)' # Transparent background for a cleaner integration with Streamlit
         )
         
-        fig.update_yaxes(title_text="Price ($)", row=1, col=1)
-        fig.update_yaxes(title_text="Value", row=2, col=1)
+        # Gridlines
+        fig.update_yaxes(title_text="Price ($)", row=1, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
+        fig.update_yaxes(title_text="Momentum", row=2, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
+        fig.update_xaxes(showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
 
         st.plotly_chart(fig, use_container_width=True)
