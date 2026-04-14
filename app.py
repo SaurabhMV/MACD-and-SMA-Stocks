@@ -3,11 +3,12 @@ import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Stock Technical Analysis", page_icon="📈", layout="wide")
 st.title("📈 Stock Technical Analysis Dashboard")
-st.write("Analyze multiple stocks, adjust timeframes, and **click on any row in the table** to view its SMA and MACD charts.")
+st.write("Analyze multiple stocks, adjust timeframes, and **click on any row in the table** to view detailed price action and MACD signals.")
 
 # --- Session State Initialization ---
 if 'stock_data' not in st.session_state:
@@ -35,7 +36,6 @@ with col3:
         index=2 # Defaults to '1d'
     )
 
-# Warning for Yahoo Finance Intraday limits
 if selected_interval in ["30m", "1h"]:
     st.caption("⚠️ *Note: Yahoo Finance limits 30m data to the last 60 days, and 1h data to the last 2 years.*")
 
@@ -50,11 +50,10 @@ if st.button("Run Analysis", type="primary"):
 
             for ticker in tickers:
                 try:
-                    # Pass the user's selected period and interval to yfinance
                     df = yf.download(ticker, period=selected_period, interval=selected_interval, progress=False)
 
                     if df.empty or len(df) < 50:
-                        st.error(f"Not enough data for {ticker} using a {selected_period} period at {selected_interval} intervals. (Need at least 50 data points). Try a shorter period for intraday intervals.")
+                        st.error(f"Not enough data for {ticker}. Try a shorter period for intraday intervals.")
                         continue
                     
                     if isinstance(df.columns, pd.MultiIndex):
@@ -70,19 +69,15 @@ if st.button("Run Analysis", type="primary"):
                     df['Support_20d'] = df['Low'].rolling(window=20).min()
                     df['Resistance_20d'] = df['High'].rolling(window=20).max()
 
-                    # --- Calculate Historical Crossovers for Chart Signals ---
-                    # SMA Crossovers
+                    # Crossovers
                     df['SMA_Buy'] = (df['SMA_18'] > df['SMA_50']) & (df['SMA_18'].shift(1) <= df['SMA_50'].shift(1))
                     df['SMA_Sell'] = (df['SMA_18'] < df['SMA_50']) & (df['SMA_18'].shift(1) >= df['SMA_50'].shift(1))
 
-                    # MACD Crossovers
                     df['MACD_Buy'] = (df['MACD_12_26_9'] > df['MACDs_12_26_9']) & (df['MACD_12_26_9'].shift(1) <= df['MACDs_12_26_9'].shift(1))
                     df['MACD_Sell'] = (df['MACD_12_26_9'] < df['MACDs_12_26_9']) & (df['MACD_12_26_9'].shift(1) >= df['MACDs_12_26_9'].shift(1))
 
-                    # Save dataframe for charting later
                     stock_data_dict[ticker] = df
 
-                    # Extract latest values for the table
                     latest = df.iloc[-1]
                     current_price = latest['Close']
                     sma_18 = latest['SMA_18']
@@ -94,7 +89,6 @@ if st.button("Run Analysis", type="primary"):
                     support = latest['Support_20d']
                     resistance = latest['Resistance_20d']
 
-                    # Current Day Recommendations
                     sma_rec = "Buy" if sma_18 > sma_50 else "Sell"
                     macd_rec = "Buy" if macd_line > macd_signal else "Sell"
 
@@ -125,7 +119,6 @@ if st.button("Run Analysis", type="primary"):
                 except Exception as e:
                     st.error(f"Error calculating data for {ticker}: {e}")
 
-            # Save to session state
             st.session_state.stock_data = stock_data_dict
             st.session_state.results_data = results
 
@@ -140,13 +133,10 @@ if st.session_state.results_data:
             return 'color: #FF0000; font-weight: bold;'
         return ''
     
-    styled_df = df_results.style.map(
-        style_recommendations, 
-        subset=['SMA Rec', 'MACD Rec']
-    )
+    styled_df = df_results.style.map(style_recommendations, subset=['SMA Rec', 'MACD Rec'])
 
     st.subheader("Technical Analysis Results")
-    st.info("💡 **Click on any row** below to view the interactive SMA and MACD charts.")
+    st.info("💡 **Click on any row** below to view the interactive Price Action and MACD charts.")
     
     event = st.dataframe(
         styled_df, 
@@ -156,66 +146,70 @@ if st.session_state.results_data:
         selection_mode="single-row" 
     )
 
-    # --- Chart Generation Logic (Plotly with Signals) ---
+    # --- Unified Professional Chart Logic ---
     if event.selection.rows:
         selected_idx = event.selection.rows[0]
         selected_ticker = df_results.iloc[selected_idx]['Ticker']
         
         st.divider()
-        st.subheader(f"📊 Detailed Charts for {selected_ticker}")
+        st.subheader(f"📊 {selected_ticker} - Price Action & MACD Signals")
         
         hist_df = st.session_state.stock_data[selected_ticker]
 
-        col1, col2 = st.columns(2)
+        # Extract Buy/Sell Dates
+        sma_buys = hist_df[hist_df['SMA_Buy']]
+        sma_sells = hist_df[hist_df['SMA_Sell']]
+        macd_buys = hist_df[hist_df['MACD_Buy']]
+        macd_sells = hist_df[hist_df['MACD_Sell']]
 
-        with col1:
-            st.markdown(f"**Price vs SMA (18/50) - {selected_ticker}**")
-            
-            fig_sma = go.Figure()
-            # Plot Close Price & SMAs
-            fig_sma.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], name='Close Price', line=dict(color='gray', width=1.5)))
-            fig_sma.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_18'], name='SMA(18) Fast', line=dict(color='blue', width=2)))
-            fig_sma.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_50'], name='SMA(50) Slow', line=dict(color='orange', width=2)))
-            
-            # Extract Buy/Sell Dates for SMA
-            sma_buys = hist_df[hist_df['SMA_Buy']]
-            sma_sells = hist_df[hist_df['SMA_Sell']]
-            
-            # Plot SMA Signals
-            fig_sma.add_trace(go.Scatter(x=sma_buys.index, y=sma_buys['SMA_18'], mode='markers', name='Buy Signal', marker=dict(symbol='triangle-up', size=14, color='#00FF00', line=dict(width=1, color='darkgreen'))))
-            fig_sma.add_trace(go.Scatter(x=sma_sells.index, y=sma_sells['SMA_18'], mode='markers', name='Sell Signal', marker=dict(symbol='triangle-down', size=14, color='#FF0000', line=dict(width=1, color='darkred'))))
+        # Create Subplots: Row 1 = Price (70%), Row 2 = MACD (30%)
+        fig = make_subplots(
+            rows=2, cols=1, 
+            shared_xaxes=True, 
+            vertical_spacing=0.05, 
+            row_heights=[0.7, 0.3],
+            subplot_titles=("Price Action (Candlesticks) & SMAs", "MACD & Momentum")
+        )
 
-            fig_sma.update_layout(
-                xaxis_title="Date / Time", yaxis_title="Price ($)", hovermode="x unified",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                margin=dict(l=0, r=0, t=30, b=0)
-            )
-            st.plotly_chart(fig_sma, use_container_width=True)
+        # --- Top Chart: Price Action ---
+        # 1. Candlestick
+        fig.add_trace(go.Candlestick(
+            x=hist_df.index, open=hist_df['Open'], high=hist_df['High'], 
+            low=hist_df['Low'], close=hist_df['Close'], name='Price'
+        ), row=1, col=1)
 
-        with col2:
-            st.markdown(f"**MACD & Momentum - {selected_ticker}**")
-            
-            fig_macd = go.Figure()
-            
-            # Histogram Colors
-            colors = ['#2ca02c' if val >= 0 else '#d62728' for val in hist_df['MACDh_12_26_9']]
-            
-            # Plot Histogram & Lines
-            fig_macd.add_trace(go.Bar(x=hist_df.index, y=hist_df['MACDh_12_26_9'], name='Histogram', marker_color=colors))
-            fig_macd.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACD_12_26_9'], name='MACD Line', line=dict(color='blue', width=2)))
-            fig_macd.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACDs_12_26_9'], name='Signal Line', line=dict(color='orange', width=2)))
-            
-            # Extract Buy/Sell Dates for MACD
-            macd_buys = hist_df[hist_df['MACD_Buy']]
-            macd_sells = hist_df[hist_df['MACD_Sell']]
-            
-            # Plot MACD Signals
-            fig_macd.add_trace(go.Scatter(x=macd_buys.index, y=macd_buys['MACD_12_26_9'], mode='markers', name='Buy Signal', marker=dict(symbol='triangle-up', size=14, color='#00FF00', line=dict(width=1, color='darkgreen'))))
-            fig_macd.add_trace(go.Scatter(x=macd_sells.index, y=macd_sells['MACD_12_26_9'], mode='markers', name='Sell Signal', marker=dict(symbol='triangle-down', size=14, color='#FF0000', line=dict(width=1, color='darkred'))))
+        # 2. SMAs
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_18'], line=dict(color='blue', width=1.5), name='SMA(18)'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_50'], line=dict(color='orange', width=1.5), name='SMA(50)'), row=1, col=1)
 
-            fig_macd.update_layout(
-                xaxis_title="Date / Time", yaxis_title="MACD Value", hovermode="x unified",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                margin=dict(l=0, r=0, t=30, b=0)
-            )
-            st.plotly_chart(fig_macd, use_container_width=True)
+        # 3. MACD Signals plotted on the Price Chart
+        fig.add_trace(go.Scatter(
+            x=macd_buys.index, y=macd_buys['Low'] * 0.98, mode='markers', 
+            name='MACD Buy Signal', marker=dict(symbol='triangle-up', size=14, color='#00FF00', line=dict(width=1, color='darkgreen'))
+        ), row=1, col=1)
+        
+        fig.add_trace(go.Scatter(
+            x=macd_sells.index, y=macd_sells['High'] * 1.02, mode='markers', 
+            name='MACD Sell Signal', marker=dict(symbol='triangle-down', size=14, color='#FF0000', line=dict(width=1, color='darkred'))
+        ), row=1, col=1)
+
+        # --- Bottom Chart: MACD ---
+        colors = ['#2ca02c' if val >= 0 else '#d62728' for val in hist_df['MACDh_12_26_9']]
+        
+        fig.add_trace(go.Bar(x=hist_df.index, y=hist_df['MACDh_12_26_9'], marker_color=colors, name='MACD Histogram'), row=2, col=1)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACD_12_26_9'], line=dict(color='blue', width=1.5), name='MACD Line'), row=2, col=1)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACDs_12_26_9'], line=dict(color='orange', width=1.5), name='Signal Line'), row=2, col=1)
+
+        # Clean up layout
+        fig.update_layout(
+            height=700,
+            xaxis_rangeslider_visible=False, # Hides the default candlestick slider for a cleaner look
+            hovermode="x unified",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            margin=dict(l=20, r=20, t=50, b=20)
+        )
+        
+        fig.update_yaxes(title_text="Price ($)", row=1, col=1)
+        fig.update_yaxes(title_text="Value", row=2, col=1)
+
+        st.plotly_chart(fig, use_container_width=True)
