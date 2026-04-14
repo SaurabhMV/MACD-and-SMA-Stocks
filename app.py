@@ -124,7 +124,7 @@ if st.session_state.results_data:
         use_container_width=True, 
         hide_index=True,
         on_select="rerun",          # Triggers a rerun when a row is clicked
-        selection_mode="single_row" # Restricts selection to one row at a time
+        selection_mode="single-row" # Restricts selection to one row at a time
     )
 
     # --- Chart Generation Logic ---
