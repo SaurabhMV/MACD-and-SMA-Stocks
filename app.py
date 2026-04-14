@@ -22,19 +22,22 @@ with col1:
     tickers = [ticker.strip().upper() for ticker in tickers_input.split(",") if ticker.strip()]
 
 with col2:
-    # 3mo is the minimum safe period for a daily 50-SMA (approx 63 trading days)
     selected_period = st.selectbox(
         "Historical Period:", 
-        ["3mo", "6mo", "1y", "2y", "5y", "10y", "max"], 
-        index=2 # Defaults to '1y'
+        ["1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "max"], 
+        index=3 # Defaults to '1y'
     )
 
 with col3:
     selected_interval = st.selectbox(
         "Chart Interval:", 
-        ["1d", "1wk", "1mo"], 
-        index=0 # Defaults to '1d'
+        ["30m", "1h", "1d", "1wk", "1mo"], 
+        index=2 # Defaults to '1d'
     )
+
+# Warning for Yahoo Finance Intraday limits
+if selected_interval in ["30m", "1h"]:
+    st.caption("⚠️ *Note: Yahoo Finance limits 30m data to the last 60 days, and 1h data to the last 2 years.*")
 
 # --- Analysis Logic ---
 if st.button("Run Analysis", type="primary"):
@@ -51,7 +54,7 @@ if st.button("Run Analysis", type="primary"):
                     df = yf.download(ticker, period=selected_period, interval=selected_interval, progress=False)
 
                     if df.empty or len(df) < 50:
-                        st.error(f"Not enough data for {ticker} using a {selected_period} period at {selected_interval} intervals. (Need at least 50 data points). Skipping.")
+                        st.error(f"Not enough data for {ticker} using a {selected_period} period at {selected_interval} intervals. (Need at least 50 data points). Try a shorter period for intraday intervals.")
                         continue
                     
                     if isinstance(df.columns, pd.MultiIndex):
@@ -183,7 +186,7 @@ if st.session_state.results_data:
             fig_sma.add_trace(go.Scatter(x=sma_sells.index, y=sma_sells['SMA_18'], mode='markers', name='Sell Signal', marker=dict(symbol='triangle-down', size=14, color='#FF0000', line=dict(width=1, color='darkred'))))
 
             fig_sma.update_layout(
-                xaxis_title="Date", yaxis_title="Price ($)", hovermode="x unified",
+                xaxis_title="Date / Time", yaxis_title="Price ($)", hovermode="x unified",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 margin=dict(l=0, r=0, t=30, b=0)
             )
@@ -211,7 +214,7 @@ if st.session_state.results_data:
             fig_macd.add_trace(go.Scatter(x=macd_sells.index, y=macd_sells['MACD_12_26_9'], mode='markers', name='Sell Signal', marker=dict(symbol='triangle-down', size=14, color='#FF0000', line=dict(width=1, color='darkred'))))
 
             fig_macd.update_layout(
-                xaxis_title="Date", yaxis_title="MACD Value", hovermode="x unified",
+                xaxis_title="Date / Time", yaxis_title="MACD Value", hovermode="x unified",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 margin=dict(l=0, r=0, t=30, b=0)
             )
