@@ -1,120 +1,122 @@
 import streamlit as st
 import yfinance as yf
-import time
-import requests
 import pandas as pd
+import pandas_ta as ta
 
-# --- Page Config ---
-st.set_page_config(page_title="Smart Interval Monitor", page_icon="⏲️", layout="wide")
-st.title("⏲️ Responsive Stock Monitor")
+# --- Page Configuration ---
+st.set_page_config(page_title="Stock Technical Analysis", page_icon="📈", layout="wide")
+st.title("📈 Stock Technical Analysis Dashboard")
+st.write("Analyze multiple stocks using SMA, MACD, RSI, ADX, and identify recent Support/Resistance levels.")
 
-# --- Sidebar ---
-st.sidebar.header("Settings")
-bot_token = st.sidebar.text_input("Telegram Bot Token", type="password")
-chat_id = st.sidebar.text_input("Authorized Chat ID")
-ticker_input = st.sidebar.text_input("Tickers", value="AAPL, TSLA, ZGLD.TO")
-drop_threshold = st.sidebar.slider("Alert Threshold (%)", 1, 20, 5)
+# --- User Inputs ---
+tickers_input = st.text_input("Enter Stock Tickers (comma-separated):", "AAPL, MSFT, TSLA, NVDA")
+tickers = [ticker.strip().upper() for ticker in tickers_input.split(",") if ticker.strip()]
 
-# --- RE-ADDED FEATURE: Check Interval ---
-check_interval = st.sidebar.number_input(
-    "Refresh Rate (seconds)", 
-    min_value=30, 
-    value=120, 
-    help="How often to check stock prices. Bot remains responsive every 10s."
-)
+# --- Analysis Logic ---
+if st.button("Run Analysis", type="primary"):
+    if not tickers:
+        st.warning("Please enter at least one ticker.")
+    else:
+        with st.spinner("Fetching market data and calculating indicators..."):
+            results = []
 
-# --- State Management ---
-if 'running' not in st.session_state: st.session_state.running = False
-if 'last_update_id' not in st.session_state: st.session_state.last_update_id = 0
-if 'last_fetch_time' not in st.session_state: st.session_state.last_fetch_time = 0
-if 'results_cache' not in st.session_state: st.session_state.results_cache = []
+            for ticker in tickers:
+                try:
+                    # Fetch 1 year of daily data to ensure enough history for the 50-day SMA and ADX
+                    df = yf.download(ticker, period="1y", progress=False)
 
-# --- Helper Functions ---
-def send_telegram(msg):
-    if bot_token and chat_id:
-        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-        try: requests.post(url, json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"})
-        except: pass
+                    if df.empty or len(df) < 50:
+                        st.error(f"Not enough historical data for {ticker}. Skipping.")
+                        continue
+                    
+                    # Handle yfinance multi-index columns (happens in newer yfinance versions)
+                    if isinstance(df.columns, pd.MultiIndex):
+                        df.columns = df.columns.get_level_values(0)
 
-def fetch_data(tickers):
-    results = []
-    for symbol in tickers:
-        try:
-            t = yf.Ticker(symbol)
-            df_3d = t.history(period='3d', interval='1h')
-            df_today = t.history(period='1d', interval='1m')
-            if not df_3d.empty and not df_today.empty:
-                curr = df_today['Close'].iloc[-1]
-                h3 = df_3d['High'].max()
-                open_p = df_today['Open'].iloc[0]
-                pullback = ((curr - h3) / h3) * 100
-                day_chg = ((curr - open_p) / open_p) * 100
-                results.append({"Ticker": symbol, "Price": curr, "Pullback": pullback, "DayChg": day_chg})
-        except: continue
-    return results
+                    # --- 1. Simple Moving Averages (18 & 50) ---
+                    df.ta.sma(length=18, append=True)
+                    df.ta.sma(length=50, append=True)
 
-def check_bot_commands():
-    """Polls Telegram for commands without blocking the UI."""
-    if not bot_token or not chat_id: return False
-    url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
-    params = {"offset": st.session_state.last_update_id + 1, "timeout": 1}
-    try:
-        r = requests.get(url, params=params).json()
-        if r.get("result"):
-            for update in r["result"]:
-                st.session_state.last_update_id = update["update_id"]
-                msg = update.get("message", {})
-                if str(msg.get("chat", {}).get("id")) != str(chat_id).strip(): continue
-                text = msg.get("text", "").lower()
+                    # --- 2. MACD (Fast 12, Slow 26, Signal 9) ---
+                    df.ta.macd(append=True)
+
+                    # --- 3. Wilder's RSI (14) ---
+                    df.ta.rsi(length=14, append=True)
+
+                    # --- 4. ADX Strength (14) ---
+                    df.ta.adx(length=14, append=True)
+
+                    # --- 5. Support & Resistance (20-day rolling High/Low) ---
+                    df['Support_20d'] = df['Low'].rolling(window=20).min()
+                    df['Resistance_20d'] = df['High'].rolling(window=20).max()
+
+                    # Extract the most recent day's values
+                    latest = df.iloc[-1]
+
+                    # Map pandas_ta default column names
+                    current_price = latest['Close']
+                    sma_18 = latest['SMA_18']
+                    sma_50 = latest['SMA_50']
+                    macd_line = latest['MACD_12_26_9']
+                    macd_signal = latest['MACDs_12_26_9']
+                    rsi = latest['RSI_14']
+                    adx = latest['ADX_14']
+                    support = latest['Support_20d']
+                    resistance = latest['Resistance_20d']
+
+                    # --- Recommendations Logic ---
+                    # SMA Rec: Bullish if faster SMA is above slower SMA
+                    sma_rec = "Buy" if sma_18 > sma_50 else "Sell"
+                    
+                    # MACD Rec: Bullish if MACD line is above the Signal line
+                    macd_rec = "Buy" if macd_line > macd_signal else "Sell"
+
+                    # Contextualize ADX Strength (Trend strength, regardless of direction)
+                    if pd.isna(adx):
+                        trend_strength = "N/A"
+                    elif adx > 25:
+                        trend_strength = "Strong"
+                    elif adx > 20:
+                        trend_strength = "Moderate"
+                    else:
+                        trend_strength = "Weak/Sideways"
+
+                    # Append to results
+                    results.append({
+                        "Ticker": ticker,
+                        "Price": f"${current_price:.2f}",
+                        "SMA(18)": round(sma_18, 2),
+                        "SMA(50)": round(sma_50, 2),
+                        "SMA Rec": sma_rec,
+                        "MACD": round(macd_line, 2),
+                        "MACD Signal": round(macd_signal, 2),
+                        "MACD Rec": macd_rec,
+                        "Wilder's RSI": round(rsi, 2),
+                        "ADX (Strength)": f"{round(adx, 2)} ({trend_strength})",
+                        "Support (Floor)": f"${support:.2f}",
+                        "Resistance (Ceil)": f"${resistance:.2f}"
+                    })
+
+                except Exception as e:
+                    st.error(f"Error calculating data for {ticker}: {e}")
+
+            # --- Display Results ---
+            if results:
+                df_results = pd.DataFrame(results)
+
+                # Apply styling to highlight Buy/Sell recommendations
+                def style_recommendations(val):
+                    if val == 'Buy':
+                        return 'color: #00FF00; font-weight: bold;' # Green
+                    elif val == 'Sell':
+                        return 'color: #FF0000; font-weight: bold;' # Red
+                    return ''
                 
-                if "/start" in text:
-                    st.session_state.running = True
-                    send_telegram("🚀 *Authorized: Monitor Started*")
-                    return True
-                elif "/stop" in text:
-                    st.session_state.running = False
-                    send_telegram("🛑 *Authorized: Monitor Stopped*")
-                    return True
-                elif "/status" in text:
-                    send_telegram("⌛ *Fetching current status...*")
-                    data = fetch_data([t.strip().upper() for t in ticker_input.split(",")])
-                    status_msg = "📊 *Current Status:*\n"
-                    for i in data: status_msg += f"*{i['Ticker']}*: ${i['Price']:.2f} ({i['Pullback']:.2f}%)\n"
-                    send_telegram(status_msg)
-    except: pass
-    return False
+                # Apply styling to the dataframe (compatible with modern pandas)
+                styled_df = df_results.style.map(
+                    style_recommendations, 
+                    subset=['SMA Rec', 'MACD Rec']
+                )
 
-# --- Main App Execution ---
-# Always check commands first
-if check_bot_commands(): st.rerun()
-
-status_txt = "🟢 RUNNING" if st.session_state.running else "🔴 STOPPED"
-st.sidebar.markdown(f"**System Status:** {status_txt}")
-
-if st.session_state.running:
-    tickers = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
-    
-    # 1. Timer Logic: Only fetch if interval has passed
-    current_time = time.time()
-    if (current_time - st.session_state.last_fetch_time) >= check_interval:
-        with st.spinner("Updating prices..."):
-            st.session_state.results_cache = fetch_data(tickers)
-            st.session_state.last_fetch_time = current_time
-            
-            # 2. Alert Logic
-            for item in st.session_state.results_cache:
-                if item['Pullback'] <= -drop_threshold:
-                    send_telegram(f"🚨 *{item['Ticker']} ALERT*\nDown `{abs(item['Pullback']):.2f}%` from 3D High.")
-
-    # 3. Display Data
-    if st.session_state.results_cache:
-        st.dataframe(pd.DataFrame(st.session_state.results_cache), use_container_width=True, hide_index=True)
-        st.caption(f"Last Price Sync: {time.strftime('%H:%M:%S')}. Next sync in {int(check_interval - (time.time() - st.session_state.last_fetch_time))}s.")
-
-    # 4. Short Sleep for Bot Responsiveness
-    time.sleep(10)
-    st.rerun()
-else:
-    st.info("System Standby. Bot commands: `/start`, `/stop`, `/status`")
-    time.sleep(10)
-    st.rerun()
+                st.subheader("Technical Analysis Results")
+                st.dataframe(styled_df, use_container_width=True, hide_index=True)
