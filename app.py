@@ -60,7 +60,6 @@ with st.sidebar:
             index=1
         )
         
-        # Map selection to milliseconds for the st_autorefresh component
         interval_mapping = {
             "1 Minute": 60 * 1000,
             "5 Minutes": 5 * 60 * 1000,
@@ -68,10 +67,8 @@ with st.sidebar:
             "30 Minutes": 30 * 60 * 1000
         }
         
-        # This component returns a counter that increases every time the interval passes
         timer_count = st_autorefresh(interval=interval_mapping[refresh_interval], key="data_refresh")
         
-        # Check if the rerun was caused by the timer ticking (and not the user just clicking around)
         if timer_count != st.session_state.last_timer_count:
             st.session_state.last_timer_count = timer_count
             is_timer_tick = True
@@ -85,7 +82,6 @@ with st.sidebar:
 st.title("📈 Pro Technical Analysis Dashboard")
 st.markdown("Analyze market trends, identify momentum shifts, and visualize actionable **Buy/Sell signals**.")
 
-# Trigger data fetch if button is clicked OR if the auto-refresh timer just ticked
 if run_button or is_timer_tick:
     if not tickers:
         st.sidebar.warning("Please enter at least one ticker.")
@@ -111,6 +107,9 @@ if run_button or is_timer_tick:
                     df.ta.macd(append=True) 
                     df.ta.rsi(length=14, append=True)
                     df.ta.adx(length=14, append=True)
+                    
+                    # New: Bollinger Bands (20-period, 2 standard deviations)
+                    df.ta.bbands(length=20, std=2, append=True)
 
                     df['Support_20d'] = df['Low'].rolling(window=20).min()
                     df['Resistance_20d'] = df['High'].rolling(window=20).max()
@@ -164,7 +163,6 @@ if run_button or is_timer_tick:
                 except Exception as e:
                     st.error(f"Error for {ticker}: {e}")
 
-            # Update Session State
             st.session_state.stock_data = stock_data_dict
             st.session_state.results_data = results
             st.session_state.last_updated = datetime.now().strftime("%I:%M:%S %p")
@@ -188,7 +186,7 @@ if st.session_state.results_data:
     with col_title:
         st.subheader("Market Overview", divider="gray")
     with col_time:
-        st.write("") # Alignment spacing
+        st.write("") 
         st.caption(f"🔄 **Last Updated:** {st.session_state.last_updated}")
         
     st.info("💡 **Click on any row** below to load its interactive charts and detailed metrics.")
@@ -239,12 +237,19 @@ if st.session_state.results_data:
             row_heights=[0.6, 0.4] 
         )
 
-        # Top Chart: Price Action
+        # Top Chart: Price Action & Bollinger Bands
+        # 1. Bollinger Bands Upper (dashed, light opacity)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['BBU_20_2.0'], mode='lines', line=dict(color='rgba(255, 255, 255, 0.3)', width=1, dash='dash'), name='BB Upper', showlegend=False), row=1, col=1)
+        
+        # 2. Bollinger Bands Lower (shaded area between upper and lower)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['BBL_20_2.0'], mode='lines', line=dict(color='rgba(255, 255, 255, 0.3)', width=1, dash='dash'), fill='tonexty', fillcolor='rgba(128, 128, 128, 0.1)', name='Bollinger Bands', showlegend=True), row=1, col=1)
+
+        # 3. Close Price & SMAs
         fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], mode='lines', name='Close Price', line=dict(color='white', width=2)), row=1, col=1)
         fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_18'], line=dict(color='#00BFFF', width=1.5), name='SMA(18) Fast'), row=1, col=1)
         fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_50'], line=dict(color='#FFA500', width=1.5), name='SMA(50) Slow'), row=1, col=1)
 
-        # MACD Signals on Price
+        # 4. MACD Signals on Price
         fig.add_trace(go.Scatter(x=macd_buys.index, y=macd_buys['Low'] * 0.98, mode='markers', name='MACD Buy', marker=dict(symbol='triangle-up', size=14, color='#00FF00', line=dict(width=1, color='darkgreen'))), row=1, col=1)
         fig.add_trace(go.Scatter(x=macd_sells.index, y=macd_sells['High'] * 1.02, mode='markers', name='MACD Sell', marker=dict(symbol='triangle-down', size=14, color='#FF0000', line=dict(width=1, color='darkred'))), row=1, col=1)
 
