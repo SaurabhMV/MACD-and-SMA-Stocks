@@ -242,26 +242,28 @@ if st.session_state.results_data:
             rows=3, cols=1, 
             shared_xaxes=True, 
             vertical_spacing=0.03, 
-            row_heights=[0.35, 0.35, 0.30] # <--- INCREASED MOMENTUM GRAPH TO 30% OF TOTAL HEIGHT
+            row_heights=[0.35, 0.35, 0.30] 
         )
 
         # --- DYNAMIC BOLLINGER BANDS LOOKUP ---
         bb_upper_col = [col for col in hist_df.columns if col.startswith('BBU')][0]
         bb_lower_col = [col for col in hist_df.columns if col.startswith('BBL')][0]
 
-        # TIER 1: Price Action & Trend (Row 1)
+        # TIER 1: Trend (Row 1) - Price line removed from here
         fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df[bb_upper_col], mode='lines', line=dict(color='rgba(255, 255, 255, 0.3)', width=1, dash='dash'), name='BB Upper', showlegend=False), row=1, col=1)
         fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df[bb_lower_col], mode='lines', line=dict(color='rgba(255, 255, 255, 0.3)', width=1, dash='dash'), fill='tonexty', fillcolor='rgba(128, 128, 128, 0.1)', name='Bollinger Bands', showlegend=True), row=1, col=1)
-        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], mode='lines', name='Close Price', line=dict(color='white', width=2)), row=1, col=1)
         fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_18'], line=dict(color='#00BFFF', width=1.5), name='SMA(18) Fast'), row=1, col=1)
         fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_50'], line=dict(color='#FFA500', width=1.5), name='SMA(50) Slow'), row=1, col=1)
 
-        # MACD Signals on Price (Tier 1)
+        # MACD Signals (Tier 1)
         fig.add_trace(go.Scatter(x=macd_buys.index, y=macd_buys['Low'] * 0.98, mode='markers', name='MACD Buy', marker=dict(symbol='triangle-up', size=14, color='#00FF00', line=dict(width=1, color='darkgreen'))), row=1, col=1)
         fig.add_trace(go.Scatter(x=macd_sells.index, y=macd_sells['High'] * 1.02, mode='markers', name='MACD Sell', marker=dict(symbol='triangle-down', size=14, color='#FF0000', line=dict(width=1, color='darkred'))), row=1, col=1)
 
-        # TIER 2: Market Structure - Candlesticks & Volume Profile (Row 2)
+        # TIER 2: Market Structure - Candlesticks, CLOSE PRICE LINE, & Volume Profile (Row 2)
         fig.add_trace(go.Candlestick(x=hist_df.index, open=hist_df['Open'], high=hist_df['High'], low=hist_df['Low'], close=hist_df['Close'], name='Candlesticks'), row=2, col=1)
+        
+        # MOVED CLOSE PRICE HERE (slightly transparent so candlesticks are still visible underneath)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], mode='lines', name='Close Price', line=dict(color='rgba(255, 255, 255, 0.6)', width=1.5)), row=2, col=1)
         
         # Volume Profile plotted on an independent X-axis (x4) mapped to y-axis 2
         fig.add_trace(go.Bar(
