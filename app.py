@@ -242,7 +242,7 @@ if st.session_state.results_data:
             rows=3, cols=1, 
             shared_xaxes=True, 
             vertical_spacing=0.03, 
-            row_heights=[0.35, 0.35, 0.30] 
+            row_heights=[0.3, 0.4, 0.30] 
         )
 
         # --- DYNAMIC BOLLINGER BANDS LOOKUP ---
