@@ -6,10 +6,10 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from streamlit_autorefresh import st_autorefresh
 from datetime import datetime
-import numpy as np
+import numpy as np # Added for Volume Profile calculations
 
 # --- Page Configuration ---
-st.set_page_config(page_title="Pro Trading Terminal", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Pro Technical Analysis", page_icon="📈", layout="wide")
 
 # --- Session State Initialization ---
 if 'stock_data' not in st.session_state:
@@ -22,153 +22,276 @@ if 'last_timer_count' not in st.session_state:
     st.session_state.last_timer_count = 0
 
 # ==========================================
-# SIDEBAR: CONTROLS
+# SIDEBAR: CONTROLS & INPUTS
 # ==========================================
 with st.sidebar:
     st.title("⚙️ Dashboard Controls")
+    st.write("Configure your analysis parameters below.")
     st.divider()
     
-    tickers_input = st.text_input("Enter Tickers (NSE: .NS, BSE: .BO):", "AAPL, RELIANCE.NS, TSLA, NVDA")
+    tickers_input = st.text_input("Enter Stock Tickers (comma-separated):", "AAPL, MSFT, TSLA, NVDA")
     tickers = [ticker.strip().upper() for ticker in tickers_input.split(",") if ticker.strip()]
 
-    selected_period = st.selectbox("Historical Period:", ["1mo", "3mo", "6mo", "1y", "2y", "5y", "max"], index=3)
-    selected_interval = st.selectbox("Chart Interval:", ["30m", "1h", "1d", "1wk", "1mo"], index=2)
+    selected_period = st.selectbox(
+        "Historical Period:", 
+        ["1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "max"], 
+        index=3
+    )
 
+    selected_interval = st.selectbox(
+        "Chart Interval:", 
+        ["30m", "1h", "1d", "1wk", "1mo"], 
+        index=2
+    )
+
+    if selected_interval in ["30m", "1h"]:
+        st.caption("⚠️ *Yahoo limits 30m data to 60 days, and 1h data to 2 years.*")
+        
     st.divider()
+    
+    # --- Auto-Refresh Controls ---
     st.subheader("⏱️ Automation")
     auto_refresh = st.toggle("Enable Auto-Refresh")
     
     is_timer_tick = False
     if auto_refresh:
-        freq = st.selectbox("Frequency:", ["1 Minute", "5 Minutes", "15 Minutes"], index=1)
-        mapping = {"1 Minute": 60000, "5 Minutes": 300000, "15 Minutes": 900000}
-        timer_count = st_autorefresh(interval=mapping[freq], key="data_refresh")
+        refresh_interval = st.selectbox(
+            "Refresh Frequency:", 
+            ["1 Minute", "5 Minutes", "15 Minutes", "30 Minutes"], 
+            index=1
+        )
+        
+        interval_mapping = {
+            "1 Minute": 60 * 1000,
+            "5 Minutes": 5 * 60 * 1000,
+            "15 Minutes": 15 * 60 * 1000,
+            "30 Minutes": 30 * 60 * 1000
+        }
+        
+        timer_count = st_autorefresh(interval=interval_mapping[refresh_interval], key="data_refresh")
+        
         if timer_count != st.session_state.last_timer_count:
             st.session_state.last_timer_count = timer_count
             is_timer_tick = True
 
     st.divider()
-    run_button = st.button("🚀 Update Analysis", type="primary", use_container_width=True)
+    run_button = st.button("🚀 Run Analysis / Update Now", type="primary", use_container_width=True)
 
 # ==========================================
-# DATA FETCHING & LOGIC
+# MAIN CANVAS: TITLE & DATA LOGIC
 # ==========================================
+st.title("📈 Pro Technical Analysis Dashboard")
+st.markdown("Analyze market trends, identify momentum shifts, and visualize actionable **Buy/Sell signals**.")
+
 if run_button or is_timer_tick:
     if not tickers:
-        st.sidebar.warning("Enter a ticker.")
+        st.sidebar.warning("Please enter at least one ticker.")
     else:
-        with st.spinner("Processing Market Data..."):
-            results, stock_data_dict = [], {}
+        with st.spinner(f"Fetching {selected_period} of {selected_interval} data..."):
+            results = []
+            stock_data_dict = {}
+
             for ticker in tickers:
                 try:
                     df = yf.download(ticker, period=selected_period, interval=selected_interval, progress=False)
-                    if df.empty or len(df) < 50: continue
-                    if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
 
-                    # Technical Indicators
+                    if df.empty or len(df) < 50:
+                        st.toast(f"Not enough data for {ticker}. Skipped.", icon="⚠️")
+                        continue
+                    
+                    if isinstance(df.columns, pd.MultiIndex):
+                        df.columns = df.columns.get_level_values(0)
+
+                    # Indicators
                     df.ta.sma(length=18, append=True)
                     df.ta.sma(length=50, append=True)
                     df.ta.macd(append=True) 
                     df.ta.rsi(length=14, append=True)
                     df.ta.adx(length=14, append=True)
+                    
+                    # Bollinger Bands (20-period, 2 standard deviations)
                     df.ta.bbands(length=20, std=2, append=True)
 
-                    df['Floor'] = df['Low'].rolling(window=20).min()
-                    df['Ceil'] = df['High'].rolling(window=20).max()
+                    df['Support_20d'] = df['Low'].rolling(window=20).min()
+                    df['Resistance_20d'] = df['High'].rolling(window=20).max()
 
-                    # Signal Logic
-                    df['M_Buy'] = (df['MACD_12_26_9'] > df['MACDs_12_26_9']) & (df['MACD_12_26_9'].shift(1) <= df['MACDs_12_26_9'].shift(1))
-                    df['M_Sell'] = (df['MACD_12_26_9'] < df['MACDs_12_26_9']) & (df['MACD_12_26_9'].shift(1) >= df['MACDs_12_26_9'].shift(1))
+                    # Crossovers
+                    df['SMA_Buy'] = (df['SMA_18'] > df['SMA_50']) & (df['SMA_18'].shift(1) <= df['SMA_50'].shift(1))
+                    df['SMA_Sell'] = (df['SMA_18'] < df['SMA_50']) & (df['SMA_18'].shift(1) >= df['SMA_50'].shift(1))
+                    df['MACD_Buy'] = (df['MACD_12_26_9'] > df['MACDs_12_26_9']) & (df['MACD_12_26_9'].shift(1) <= df['MACDs_12_26_9'].shift(1))
+                    df['MACD_Sell'] = (df['MACD_12_26_9'] < df['MACDs_12_26_9']) & (df['MACD_12_26_9'].shift(1) >= df['MACDs_12_26_9'].shift(1))
 
                     stock_data_dict[ticker] = df
+
                     latest = df.iloc[-1]
-                    
+                    current_price = latest['Close']
+                    sma_18 = latest['SMA_18']
+                    sma_50 = latest['SMA_50']
+                    macd_line = latest['MACD_12_26_9']
+                    macd_signal = latest['MACDs_12_26_9']
+                    rsi = latest['RSI_14']
+                    adx = latest['ADX_14']
+                    support = latest['Support_20d']
+                    resistance = latest['Resistance_20d']
+
+                    sma_rec = "Buy" if sma_18 > sma_50 else "Sell"
+                    macd_rec = "Buy" if macd_line > macd_signal else "Sell"
+
+                    if pd.isna(adx):
+                        trend_strength = "N/A"
+                    elif adx > 25:
+                        trend_strength = "Strong"
+                    elif adx > 20:
+                        trend_strength = "Moderate"
+                    else:
+                        trend_strength = "Weak"
+
                     results.append({
-                        "Ticker": ticker, "Price": f"{latest['Close']:.2f}",
-                        "SMA Rec": "Buy" if latest['SMA_18'] > latest['SMA_50'] else "Sell",
-                        "MACD Rec": "Buy" if latest['MACD_12_26_9'] > latest['MACDs_12_26_9'] else "Sell",
-                        "RSI": round(latest['RSI_14'], 2),
-                        "ADX": f"{round(latest['ADX_14'], 1)}",
-                        "Support": f"{latest['Floor']:.2f}", "Resistance": f"{latest['Ceil']:.2f}"
+                        "Ticker": ticker,
+                        "Price": f"${current_price:.2f}",
+                        "SMA(18)": round(sma_18, 2),
+                        "SMA(50)": round(sma_50, 2),
+                        "SMA Rec": sma_rec,
+                        "MACD": round(macd_line, 2),
+                        "MACD Signal": round(macd_signal, 2),
+                        "MACD Rec": macd_rec,
+                        "RSI (14)": round(rsi, 2),
+                        "ADX Trend": f"{round(adx, 2)} ({trend_strength})",
+                        "Floor": f"${support:.2f}",
+                        "Ceiling": f"${resistance:.2f}"
                     })
-                except Exception as e: st.error(f"{ticker} Error: {e}")
+
+                except Exception as e:
+                    st.error(f"Error for {ticker}: {e}")
 
             st.session_state.stock_data = stock_data_dict
             st.session_state.results_data = results
             st.session_state.last_updated = datetime.now().strftime("%I:%M:%S %p")
 
 # ==========================================
-# MAIN DASHBOARD DISPLAY
+# MAIN CANVAS: DASHBOARD DISPLAY
 # ==========================================
-st.title("📈 Pro Technical Terminal")
-
 if st.session_state.results_data:
-    df_res = pd.DataFrame(st.session_state.results_data)
+    df_results = pd.DataFrame(st.session_state.results_data)
+
+    def style_recommendations(val):
+        if val == 'Buy':
+            return 'color: #00FF00; font-weight: bold; background-color: rgba(0, 255, 0, 0.1);'
+        elif val == 'Sell':
+            return 'color: #FF0000; font-weight: bold; background-color: rgba(255, 0, 0, 0.1);'
+        return ''
     
-    def highlight(val):
-        color = 'rgba(0, 255, 0, 0.2)' if val == 'Buy' else 'rgba(255, 0, 0, 0.2)'
-        text = '#00FF00' if val == 'Buy' else '#FF0000'
-        return f'background-color: {color}; color: {text}; font-weight: bold'
+    styled_df = df_results.style.map(style_recommendations, subset=['SMA Rec', 'MACD Rec'])
 
-    st.subheader(f"Market Overview (Refreshed: {st.session_state.last_updated})", divider="gray")
-    event = st.dataframe(df_res.style.map(highlight, subset=['SMA Rec', 'MACD Rec']), use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row")
-
-    if event.selection.rows:
-        sel_idx = event.selection.rows[0]
-        ticker = df_res.iloc[sel_idx]['Ticker']
-        df = st.session_state.stock_data[ticker]
-
-        st.subheader(f"📊 {ticker} Deep Dive Analysis", divider="blue")
+    col_title, col_time = st.columns([3, 1])
+    with col_title:
+        st.subheader("Market Overview", divider="gray")
+    with col_time:
+        st.write("") 
+        st.caption(f"🔄 **Last Updated:** {st.session_state.last_updated}")
         
+    st.info("💡 **Click on any row** below to load its interactive charts and detailed metrics.")
+    
+    event = st.dataframe(
+        styled_df, 
+        use_container_width=True, 
+        hide_index=True,
+        on_select="rerun",          
+        selection_mode="single-row" 
+    )
+
+    # --- Interactive Selected Details ---
+    if event.selection.rows:
+        selected_idx = event.selection.rows[0]
+        selected_row = df_results.iloc[selected_idx]
+        selected_ticker = selected_row['Ticker']
+        hist_df = st.session_state.stock_data[selected_ticker]
+        
+        st.subheader(f"📊 {selected_ticker} Deep Dive", divider="blue")
+        
+        # --- KPI Metric Cards ---
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            prev_close = hist_df['Close'].iloc[-2]
+            curr_close = hist_df['Close'].iloc[-1]
+            pct_change = ((curr_close - prev_close) / prev_close) * 100
+            st.metric("Latest Price", f"${curr_close:.2f}", f"{pct_change:.2f}%")
+        with col2:
+            st.metric("RSI (Momentum)", selected_row['RSI (14)'], "Overbought > 70" if float(selected_row['RSI (14)']) > 70 else "Oversold < 30" if float(selected_row['RSI (14)']) < 30 else "Neutral", delta_color="off")
+        with col3:
+            st.metric("ADX (Trend Strength)", selected_row['ADX Trend'].split(" ")[0], selected_row['ADX Trend'].split(" ")[1].replace("(","").replace(")",""), delta_color="normal" if "Strong" in selected_row['ADX Trend'] else "off")
+        with col4:
+            st.metric("Support / Resistance", f"{selected_row['Floor']} / {selected_row['Ceiling']}")
+
+        st.write("")
+
         # --- Volume Profile Logic ---
         bins = 40
-        price_min, price_max = df['Low'].min(), df['High'].max()
+        price_min, price_max = hist_df['Low'].min(), hist_df['High'].max()
         bin_edges = np.linspace(price_min, price_max, bins + 1)
-        v_profile, _ = np.histogram(df['Close'], bins=bin_edges, weights=df['Volume'])
+        v_profile, _ = np.histogram(hist_df['Close'], bins=bin_edges, weights=hist_df['Volume'])
         bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
 
-        # Create Subplots
+        # --- Professional Stacked 3-Tier Chart ---
+        sma_buys = hist_df[hist_df['SMA_Buy']]
+        sma_sells = hist_df[hist_df['SMA_Sell']]
+        macd_buys = hist_df[hist_df['MACD_Buy']]
+        macd_sells = hist_df[hist_df['MACD_Sell']]
+
         fig = make_subplots(
-            rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.03,
-            row_heights=[0.35, 0.35, 0.3],
+            rows=3, cols=1, # Changed from 2 to 3
+            shared_xaxes=True, 
+            vertical_spacing=0.03, 
+            row_heights=[0.35, 0.35, 0.3], # Apportioning height across 3 charts
             specs=[[{"secondary_y": False}], [{"secondary_y": True}], [{"secondary_y": False}]]
         )
 
-        # TIER 1: TREND (Line Chart + Signals)
-        upper_col = [c for c in df.columns if c.startswith('BBU')][0]
-        lower_col = [c for c in df.columns if c.startswith('BBL')][0]
-        
-        fig.add_trace(go.Scatter(x=df.index, y=df[upper_col], line=dict(color='rgba(255,255,255,0.2)', width=1, dash='dash'), name='BB Upper', showlegend=False), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df[lower_col], line=dict(color='rgba(255,255,255,0.2)', width=1, dash='dash'), fill='tonexty', fillcolor='rgba(128,128,128,0.1)', name='BBands'), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['Close'], line=dict(color='white', width=2), name='Price'), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['SMA_18'], line=dict(color='#00BFFF', width=1.5), name='SMA 18'), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['SMA_50'], line=dict(color='#FFA500', width=1.5), name='SMA 50'), row=1, col=1)
-        
-        # Signals
-        buys, sells = df[df['M_Buy']], df[df['M_Sell']]
-        fig.add_trace(go.Scatter(x=buys.index, y=buys['Low']*0.98, mode='markers', marker=dict(symbol='triangle-up', size=12, color='#00FF00'), name='Buy'), row=1, col=1)
-        fig.add_trace(go.Scatter(x=sells.index, y=sells['High']*1.02, mode='markers', marker=dict(symbol='triangle-down', size=12, color='#FF0000'), name='Sell'), row=1, col=1)
+        # --- DYNAMIC BOLLINGER BANDS LOOKUP ---
+        bb_upper_col = [col for col in hist_df.columns if col.startswith('BBU')][0]
+        bb_lower_col = [col for col in hist_df.columns if col.startswith('BBL')][0]
 
-        # TIER 2: STRUCTURE (Candlesticks + Volume Profile)
-        fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Candles'), row=2, col=1)
-        # Volume Profile as a horizontal bar chart on secondary x-axis
+        # TIER 1: Price Action & Trend (Row 1)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df[bb_upper_col], mode='lines', line=dict(color='rgba(255, 255, 255, 0.3)', width=1, dash='dash'), name='BB Upper', showlegend=False), row=1, col=1)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df[bb_lower_col], mode='lines', line=dict(color='rgba(255, 255, 255, 0.3)', width=1, dash='dash'), fill='tonexty', fillcolor='rgba(128, 128, 128, 0.1)', name='Bollinger Bands', showlegend=True), row=1, col=1)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], mode='lines', name='Close Price', line=dict(color='white', width=2)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_18'], line=dict(color='#00BFFF', width=1.5), name='SMA(18) Fast'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_50'], line=dict(color='#FFA500', width=1.5), name='SMA(50) Slow'), row=1, col=1)
+
+        # MACD Signals on Price (Tier 1)
+        fig.add_trace(go.Scatter(x=macd_buys.index, y=macd_buys['Low'] * 0.98, mode='markers', name='MACD Buy', marker=dict(symbol='triangle-up', size=14, color='#00FF00', line=dict(width=1, color='darkgreen'))), row=1, col=1)
+        fig.add_trace(go.Scatter(x=macd_sells.index, y=macd_sells['High'] * 1.02, mode='markers', name='MACD Sell', marker=dict(symbol='triangle-down', size=14, color='#FF0000', line=dict(width=1, color='darkred'))), row=1, col=1)
+
+        # TIER 2: Market Structure - Candlesticks & Volume Profile (Row 2)
+        fig.add_trace(go.Candlestick(x=hist_df.index, open=hist_df['Open'], high=hist_df['High'], low=hist_df['Low'], close=hist_df['Close'], name='Candlesticks'), row=2, col=1)
+        
+        # Volume Profile plotted horizontally on secondary X axis overlay
         fig.add_trace(go.Bar(
             y=bin_centers, x=v_profile, orientation='h', name='Volume Profile',
             marker_color='rgba(0, 191, 255, 0.2)', showlegend=True, xaxis='x2'
         ), row=2, col=1)
 
-        # TIER 3: MOMENTUM (MACD)
-        hist_colors = ['#00FF00' if v >= 0 else '#FF0000' for v in df['MACDh_12_26_9']]
-        fig.add_trace(go.Bar(x=df.index, y=df['MACDh_12_26_9'], marker_color=hist_colors, name='Momentum'), row=3, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['MACD_12_26_9'], line=dict(color='#00BFFF'), name='MACD'), row=3, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['MACDs_12_26_9'], line=dict(color='#FFA500'), name='Signal'), row=3, col=1)
+        # TIER 3: Momentum - MACD (Row 3)
+        colors = ['#2ca02c' if val >= 0 else '#d62728' for val in hist_df['MACDh_12_26_9']]
+        fig.add_trace(go.Bar(x=hist_df.index, y=hist_df['MACDh_12_26_9'], marker_color=colors, name='MACD Histogram'), row=3, col=1)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACD_12_26_9'], line=dict(color='#00BFFF', width=1.5), name='MACD Line'), row=3, col=1)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACDs_12_26_9'], line=dict(color='#FFA500', width=1.5), name='Signal Line'), row=3, col=1)
 
-        # Layout Tuning
+        # Styling the Layout
         fig.update_layout(
-            height=1000, template='plotly_dark', showlegend=True,
-            xaxis3_title="Time", yaxis_title="Trend ($)", yaxis2_title="Structure", yaxis3_title="Momentum",
-            xaxis2=dict(overlaying='x', side='top', showgrid=False, zeroline=False, showticklabels=False, range=[0, max(v_profile)*5]),
-            hovermode='x unified', margin=dict(l=10, r=10, t=30, b=10),
-            xaxis_rangeslider_visible=False
+            height=1000, # Increased height to fit 3 charts nicely
+            hovermode="x unified",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            margin=dict(l=10, r=10, t=10, b=10),
+            plot_bgcolor='rgba(0,0,0,0)',
+            xaxis_rangeslider_visible=False, # Hides candlestick slider
+            # Overlay settings for the horizontal volume profile
+            xaxis2=dict(overlaying='x', side='top', showgrid=False, zeroline=False, showticklabels=False, range=[0, max(v_profile)*5])
         )
+        
+        # Gridlines
+        fig.update_yaxes(title_text="Trend ($)", row=1, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
+        fig.update_yaxes(title_text="Structure", row=2, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
+        fig.update_yaxes(title_text="Momentum", row=3, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
+        fig.update_xaxes(showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
+
         st.plotly_chart(fig, use_container_width=True)
