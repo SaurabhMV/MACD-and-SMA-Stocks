@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from streamlit_autorefresh import st_autorefresh
 from datetime import datetime
-import numpy as np # Added for Volume Profile calculations
+import numpy as np
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Pro Technical Analysis", page_icon="📈", layout="wide")
@@ -239,11 +239,10 @@ if st.session_state.results_data:
         macd_sells = hist_df[hist_df['MACD_Sell']]
 
         fig = make_subplots(
-            rows=3, cols=1, # Changed from 2 to 3
+            rows=3, cols=1, 
             shared_xaxes=True, 
             vertical_spacing=0.03, 
-            row_heights=[0.35, 0.35, 0.3], # Apportioning height across 3 charts
-            specs=[[{"secondary_y": False}], [{"secondary_y": True}], [{"secondary_y": False}]]
+            row_heights=[0.35, 0.35, 0.3]
         )
 
         # --- DYNAMIC BOLLINGER BANDS LOOKUP ---
@@ -264,11 +263,13 @@ if st.session_state.results_data:
         # TIER 2: Market Structure - Candlesticks & Volume Profile (Row 2)
         fig.add_trace(go.Candlestick(x=hist_df.index, open=hist_df['Open'], high=hist_df['High'], low=hist_df['Low'], close=hist_df['Close'], name='Candlesticks'), row=2, col=1)
         
-        # Volume Profile plotted horizontally on secondary X axis overlay
+        # FIX: Volume Profile plotted on an independent X-axis (x4) mapped to y-axis 2
+        # We REMOVED row=2, col=1 here so Plotly doesn't overwrite our custom axes!
         fig.add_trace(go.Bar(
             y=bin_centers, x=v_profile, orientation='h', name='Volume Profile',
-            marker_color='rgba(0, 191, 255, 0.2)', showlegend=True, xaxis='x2'
-        ), row=2, col=1)
+            marker_color='rgba(0, 191, 255, 0.2)', showlegend=True,
+            xaxis='x4', yaxis='y2' 
+        ))
 
         # TIER 3: Momentum - MACD (Row 3)
         colors = ['#2ca02c' if val >= 0 else '#d62728' for val in hist_df['MACDh_12_26_9']]
@@ -278,14 +279,24 @@ if st.session_state.results_data:
 
         # Styling the Layout
         fig.update_layout(
-            height=1000, # Increased height to fit 3 charts nicely
+            height=1000, 
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             margin=dict(l=10, r=10, t=10, b=10),
             plot_bgcolor='rgba(0,0,0,0)',
-            xaxis_rangeslider_visible=False, # Hides candlestick slider
-            # Overlay settings for the horizontal volume profile
-            xaxis2=dict(overlaying='x', side='top', showgrid=False, zeroline=False, showticklabels=False, range=[0, max(v_profile)*5])
+            xaxis_rangeslider_visible=False,
+            xaxis2_rangeslider_visible=False, # Ensure candlestick slider is hidden
+            
+            # FIX: Define the independent X-axis (x4) for the Volume Profile
+            # 'overlaying=x2' keeps it pinned to the middle row without affecting the dates
+            xaxis4=dict(
+                overlaying='x2', 
+                side='top', 
+                showgrid=False, 
+                zeroline=False, 
+                showticklabels=False, 
+                range=[0, max(v_profile) * 5] # Pushes the bars to the left 20% of the screen
+            )
         )
         
         # Gridlines
