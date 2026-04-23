@@ -257,17 +257,25 @@ if st.session_state.results_data:
         fig.add_trace(go.Scatter(x=macd_buys.index, y=macd_buys['Low'] * 0.98, mode='markers', name='MACD Buy', marker=dict(symbol='triangle-up', size=14, color='#00FF00', line=dict(width=1, color='darkgreen'))), row=1, col=1)
         fig.add_trace(go.Scatter(x=macd_sells.index, y=macd_sells['High'] * 1.02, mode='markers', name='MACD Sell', marker=dict(symbol='triangle-down', size=14, color='#FF0000', line=dict(width=1, color='darkred'))), row=1, col=1)
 
-
         # TIER 2: Market Structure - Bollinger Bands, Candlesticks, CLOSE PRICE LINE, & Volume Profile (Row 2)
         # Bollinger Bands added to Row 2 (behind candles)
         fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df[bb_upper_col], mode='lines', line=dict(color='rgba(255, 255, 255, 0.3)', width=1, dash='dash'), name='BB Upper', showlegend=False), row=2, col=1)
         fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df[bb_lower_col], mode='lines', line=dict(color='rgba(255, 255, 255, 0.3)', width=1, dash='dash'), fill='tonexty', fillcolor='rgba(128, 128, 128, 0.1)', name='Bollinger Bands', showlegend=True), row=2, col=1)
 
-        # Candlesticks
-        fig.add_trace(go.Candlestick(x=hist_df.index, open=hist_df['Open'], high=hist_df['High'], low=hist_df['Low'], close=hist_df['Close'], name='Candlesticks'), row=2, col=1)
+        # HIGH CONTRAST Candlesticks
+        fig.add_trace(go.Candlestick(
+            x=hist_df.index, 
+            open=hist_df['Open'], 
+            high=hist_df['High'], 
+            low=hist_df['Low'], 
+            close=hist_df['Close'], 
+            name='Candlesticks',
+            increasing=dict(line=dict(color='#00FF00', width=1.5), fillcolor='rgba(0, 255, 0, 0.8)'), # Pure Neon Green
+            decreasing=dict(line=dict(color='#FF0000', width=1.5), fillcolor='rgba(255, 0, 0, 0.8)')  # Pure Bright Red
+        ), row=2, col=1)
         
-        # Close Price Line
-        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], mode='lines', name='Close Price', line=dict(color='rgba(255, 255, 255, 0.6)', width=1.5)), row=2, col=1)
+        # Close Price Line (Increased opacity for better contrast)
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], mode='lines', name='Close Price', line=dict(color='rgba(255, 255, 255, 0.8)', width=1.5)), row=2, col=1)
         
         # Volume Profile plotted on an independent X-axis (x4) mapped to y-axis 2
         fig.add_trace(go.Bar(
