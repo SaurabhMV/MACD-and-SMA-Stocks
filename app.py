@@ -242,7 +242,7 @@ if st.session_state.results_data:
             rows=3, cols=1, 
             shared_xaxes=True, 
             vertical_spacing=0.03, 
-            row_heights=[0.4, 0.4, 0.2] # <--- INCREASED PROPORTIONS FOR TOP TWO CHARTS
+            row_heights=[0.35, 0.35, 0.30] # <--- INCREASED MOMENTUM GRAPH TO 30% OF TOTAL HEIGHT
         )
 
         # --- DYNAMIC BOLLINGER BANDS LOOKUP ---
@@ -278,7 +278,7 @@ if st.session_state.results_data:
 
         # Styling the Layout
         fig.update_layout(
-            height=1200, # <--- INCREASED OVERALL HEIGHT TO 1200 PIXELS
+            height=1200, 
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             margin=dict(l=10, r=10, t=10, b=10),
