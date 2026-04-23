@@ -242,7 +242,7 @@ if st.session_state.results_data:
             rows=3, cols=1, 
             shared_xaxes=True, 
             vertical_spacing=0.03, 
-            row_heights=[0.35, 0.35, 0.3]
+            row_heights=[0.4, 0.4, 0.2] # <--- INCREASED PROPORTIONS FOR TOP TWO CHARTS
         )
 
         # --- DYNAMIC BOLLINGER BANDS LOOKUP ---
@@ -263,8 +263,7 @@ if st.session_state.results_data:
         # TIER 2: Market Structure - Candlesticks & Volume Profile (Row 2)
         fig.add_trace(go.Candlestick(x=hist_df.index, open=hist_df['Open'], high=hist_df['High'], low=hist_df['Low'], close=hist_df['Close'], name='Candlesticks'), row=2, col=1)
         
-        # FIX: Volume Profile plotted on an independent X-axis (x4) mapped to y-axis 2
-        # We REMOVED row=2, col=1 here so Plotly doesn't overwrite our custom axes!
+        # Volume Profile plotted on an independent X-axis (x4) mapped to y-axis 2
         fig.add_trace(go.Bar(
             y=bin_centers, x=v_profile, orientation='h', name='Volume Profile',
             marker_color='rgba(0, 191, 255, 0.2)', showlegend=True,
@@ -279,23 +278,22 @@ if st.session_state.results_data:
 
         # Styling the Layout
         fig.update_layout(
-            height=1000, 
+            height=1200, # <--- INCREASED OVERALL HEIGHT TO 1200 PIXELS
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             margin=dict(l=10, r=10, t=10, b=10),
             plot_bgcolor='rgba(0,0,0,0)',
             xaxis_rangeslider_visible=False,
-            xaxis2_rangeslider_visible=False, # Ensure candlestick slider is hidden
+            xaxis2_rangeslider_visible=False, 
             
-            # FIX: Define the independent X-axis (x4) for the Volume Profile
-            # 'overlaying=x2' keeps it pinned to the middle row without affecting the dates
+            # Independent X-axis (x4) for the Volume Profile
             xaxis4=dict(
                 overlaying='x2', 
                 side='top', 
                 showgrid=False, 
                 zeroline=False, 
                 showticklabels=False, 
-                range=[0, max(v_profile) * 5] # Pushes the bars to the left 20% of the screen
+                range=[0, max(v_profile) * 5] 
             )
         )
         
