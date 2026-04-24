@@ -228,14 +228,13 @@ with tab_dashboard:
 
             st.write("")
 
-            # --- Volume Profile Logic & Fix ---
+            # --- Volume Profile Logic ---
             bins = 40
             price_min, price_max = hist_df['Low'].min(), hist_df['High'].max()
             bin_edges = np.linspace(price_min, price_max, bins + 1)
             v_profile, _ = np.histogram(hist_df['Close'], bins=bin_edges, weights=hist_df['Volume'])
             bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
 
-            # Formatting Volume text so it reads '1.2M' or '500K' instead of massive raw numbers
             formatted_volume = []
             for vol in v_profile:
                 if vol >= 1_000_000:
@@ -272,11 +271,10 @@ with tab_dashboard:
             fig.add_trace(go.Scatter(x=macd_sells.index, y=macd_sells['High'] * 1.02, mode='markers', name='MACD Sell', marker=dict(symbol='triangle-down', size=14, color='#FF0000', line=dict(width=1, color='darkred'))), row=1, col=1)
 
 
-            # TIER 2: Market Structure - Bollinger Bands, Candlesticks, Volume bars, & Volume Profile (Row 2)
+            # TIER 2: Market Structure (Row 2)
             fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df[bb_upper_col], mode='lines', line=dict(color='rgba(255, 255, 255, 0.3)', width=1, dash='dash'), name='BB Upper', showlegend=False), row=2, col=1)
             fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df[bb_lower_col], mode='lines', line=dict(color='rgba(255, 255, 255, 0.3)', width=1, dash='dash'), fill='tonexty', fillcolor='rgba(128, 128, 128, 0.1)', name='Bollinger Bands', showlegend=True), row=2, col=1)
 
-            # HIGH CONTRAST Candlesticks
             fig.add_trace(go.Candlestick(
                 x=hist_df.index, open=hist_df['Open'], high=hist_df['High'], low=hist_df['Low'], close=hist_df['Close'], name='Candlesticks',
                 increasing=dict(line=dict(color='#00FF00', width=1.5), fillcolor='rgba(0, 255, 0, 0.8)'),
@@ -285,13 +283,12 @@ with tab_dashboard:
             
             fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], mode='lines', name='Close Price', line=dict(color='rgba(255, 255, 255, 0.8)', width=1.5)), row=2, col=1)
             
-            # Standard Volume bars at bottom of Row 2 
             vol_colors = ['rgba(0, 255, 0, 0.2)' if row['Close'] >= row['Open'] else 'rgba(255, 0, 0, 0.2)' for _, row in hist_df.iterrows()]
             fig.add_trace(go.Bar(
                 x=hist_df.index, y=hist_df['Volume'], marker_color=vol_colors, name='Time Volume', showlegend=False
             ), row=2, col=1, secondary_y=True)
 
-            # OVERHAULED Volume Profile (Horizontal)
+            # Volume Profile (Horizontal)
             fig.add_trace(go.Bar(
                 y=bin_centers, 
                 x=v_profile, 
@@ -301,10 +298,10 @@ with tab_dashboard:
                 showlegend=True,
                 xaxis='x4', 
                 yaxis='y2',
-                text=formatted_volume,             # Puts the clean numbers inside the bars
-                textposition='inside',             # Keeps them neatly tucked in
-                insidetextanchor='end',            # Aligns them to the edge of the bar
-                hovertemplate='<b>Price:</b> $%{y:.2f}<br><b>Volume:</b> %{text}<extra></extra>' # Forces Plotly to show hover
+                text=formatted_volume,             
+                textposition='inside',             
+                insidetextanchor='end',            
+                hovertemplate='<b>Price:</b> $%{y:.2f}<br><b>Volume:</b> %{text}<extra></extra>' 
             ))
 
             # TIER 3: Momentum - MACD (Row 3)
@@ -315,7 +312,8 @@ with tab_dashboard:
 
             # Styling the Layout
             fig.update_layout(
-                height=1200, hovermode="x unified",
+                height=1200, 
+                hovermode="closest", # FIX: Changed from 'x unified' to allow side-bar hovering
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 margin=dict(l=10, r=10, t=10, b=10),
                 plot_bgcolor='rgba(0,0,0,0)',
@@ -327,13 +325,22 @@ with tab_dashboard:
                 )
             )
             
-            # Gridlines and specific scale for bottom volume bars
+            # Gridlines
             fig.update_yaxes(title_text="Trend ($)", row=1, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
             fig.update_yaxes(title_text="Structure", row=2, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
-            # Scale the secondary Y-axis (Volume bars) so they stay at the bottom 20%
             fig.update_yaxes(range=[0, hist_df['Volume'].max() * 5], showticklabels=False, row=2, col=1, secondary_y=True)
             fig.update_yaxes(title_text="Momentum", row=3, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
-            fig.update_xaxes(showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
+            
+            # FIX: Adding custom spikelines to replace the lost 'x unified' crosshair
+            fig.update_xaxes(
+                showgrid=True, 
+                gridcolor='rgba(128, 128, 128, 0.2)',
+                showspikes=True,       
+                spikemode="across",    
+                spikesnap="cursor",    
+                spikethickness=1,
+                spikecolor="rgba(255, 255, 255, 0.5)"
+            )
 
             st.plotly_chart(fig, use_container_width=True)
 
