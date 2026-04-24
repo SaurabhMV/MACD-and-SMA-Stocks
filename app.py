@@ -169,148 +169,188 @@ if run_button or is_timer_tick:
             st.session_state.last_updated = datetime.now().strftime("%I:%M:%S %p")
 
 # ==========================================
-# MAIN CANVAS: DASHBOARD DISPLAY
+# MAIN CANVAS: DASHBOARD DISPLAY TABS
 # ==========================================
-if st.session_state.results_data:
-    df_results = pd.DataFrame(st.session_state.results_data)
+tab_dashboard, tab_guide = st.tabs(["📊 Analysis Dashboard", "📖 Feature Guide"])
 
-    def style_recommendations(val):
-        if val == 'Buy':
-            return 'color: #00FF00; font-weight: bold; background-color: rgba(0, 255, 0, 0.1);'
-        elif val == 'Sell':
-            return 'color: #FF0000; font-weight: bold; background-color: rgba(255, 0, 0, 0.1);'
-        return ''
-    
-    styled_df = df_results.style.map(style_recommendations, subset=['SMA Rec', 'MACD Rec'])
+with tab_dashboard:
+    if st.session_state.results_data:
+        df_results = pd.DataFrame(st.session_state.results_data)
 
-    col_title, col_time = st.columns([3, 1])
-    with col_title:
-        st.subheader("Market Overview", divider="gray")
-    with col_time:
-        st.write("") 
-        st.caption(f"🔄 **Last Updated:** {st.session_state.last_updated}")
+        def style_recommendations(val):
+            if val == 'Buy':
+                return 'color: #00FF00; font-weight: bold; background-color: rgba(0, 255, 0, 0.1);'
+            elif val == 'Sell':
+                return 'color: #FF0000; font-weight: bold; background-color: rgba(255, 0, 0, 0.1);'
+            return ''
         
-    st.info("💡 **Click on any row** below to load its interactive charts and detailed metrics.")
-    
-    event = st.dataframe(
-        styled_df, 
-        use_container_width=True, 
-        hide_index=True,
-        on_select="rerun",          
-        selection_mode="single-row" 
-    )
+        styled_df = df_results.style.map(style_recommendations, subset=['SMA Rec', 'MACD Rec'])
 
-    # --- Interactive Selected Details ---
-    if event.selection.rows:
-        selected_idx = event.selection.rows[0]
-        selected_row = df_results.iloc[selected_idx]
-        selected_ticker = selected_row['Ticker']
-        hist_df = st.session_state.stock_data[selected_ticker]
+        col_title, col_time = st.columns([3, 1])
+        with col_title:
+            st.subheader("Market Overview", divider="gray")
+        with col_time:
+            st.write("") 
+            st.caption(f"🔄 **Last Updated:** {st.session_state.last_updated}")
+            
+        st.info("💡 **Click on any row** below to load its interactive charts and detailed metrics.")
         
-        st.subheader(f"📊 {selected_ticker} Deep Dive", divider="blue")
-        
-        # --- KPI Metric Cards ---
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            prev_close = hist_df['Close'].iloc[-2]
-            curr_close = hist_df['Close'].iloc[-1]
-            pct_change = ((curr_close - prev_close) / prev_close) * 100
-            st.metric("Latest Price", f"${curr_close:.2f}", f"{pct_change:.2f}%")
-        with col2:
-            st.metric("RSI (Momentum)", selected_row['RSI (14)'], "Overbought > 70" if float(selected_row['RSI (14)']) > 70 else "Oversold < 30" if float(selected_row['RSI (14)']) < 30 else "Neutral", delta_color="off")
-        with col3:
-            st.metric("ADX (Trend Strength)", selected_row['ADX Trend'].split(" ")[0], selected_row['ADX Trend'].split(" ")[1].replace("(","").replace(")",""), delta_color="normal" if "Strong" in selected_row['ADX Trend'] else "off")
-        with col4:
-            st.metric("Support / Resistance", f"{selected_row['Floor']} / {selected_row['Ceiling']}")
-
-        st.write("")
-
-        # --- Volume Profile Logic ---
-        bins = 40
-        price_min, price_max = hist_df['Low'].min(), hist_df['High'].max()
-        bin_edges = np.linspace(price_min, price_max, bins + 1)
-        v_profile, _ = np.histogram(hist_df['Close'], bins=bin_edges, weights=hist_df['Volume'])
-        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-
-        # --- Professional Stacked 3-Tier Chart ---
-        sma_buys = hist_df[hist_df['SMA_Buy']]
-        sma_sells = hist_df[hist_df['SMA_Sell']]
-        macd_buys = hist_df[hist_df['MACD_Buy']]
-        macd_sells = hist_df[hist_df['MACD_Sell']]
-
-        fig = make_subplots(
-            rows=3, cols=1, 
-            shared_xaxes=True, 
-            vertical_spacing=0.03, 
-            row_heights=[0.20, 0.40, 0.40],
-            specs=[[{"secondary_y": False}], [{"secondary_y": True}], [{"secondary_y": False}]] # Row 2 gets secondary Y
+        event = st.dataframe(
+            styled_df, 
+            use_container_width=True, 
+            hide_index=True,
+            on_select="rerun",          
+            selection_mode="single-row" 
         )
 
-        # --- DYNAMIC BOLLINGER BANDS LOOKUP ---
-        bb_upper_col = [col for col in hist_df.columns if col.startswith('BBU')][0]
-        bb_lower_col = [col for col in hist_df.columns if col.startswith('BBL')][0]
+        # --- Interactive Selected Details ---
+        if event.selection.rows:
+            selected_idx = event.selection.rows[0]
+            selected_row = df_results.iloc[selected_idx]
+            selected_ticker = selected_row['Ticker']
+            hist_df = st.session_state.stock_data[selected_ticker]
+            
+            st.subheader(f"📊 {selected_ticker} Deep Dive", divider="blue")
+            
+            # --- KPI Metric Cards ---
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                prev_close = hist_df['Close'].iloc[-2]
+                curr_close = hist_df['Close'].iloc[-1]
+                pct_change = ((curr_close - prev_close) / prev_close) * 100
+                st.metric("Latest Price", f"${curr_close:.2f}", f"{pct_change:.2f}%")
+            with col2:
+                st.metric("RSI (Momentum)", selected_row['RSI (14)'], "Overbought > 70" if float(selected_row['RSI (14)']) > 70 else "Oversold < 30" if float(selected_row['RSI (14)']) < 30 else "Neutral", delta_color="off")
+            with col3:
+                st.metric("ADX (Trend Strength)", selected_row['ADX Trend'].split(" ")[0], selected_row['ADX Trend'].split(" ")[1].replace("(","").replace(")",""), delta_color="normal" if "Strong" in selected_row['ADX Trend'] else "off")
+            with col4:
+                st.metric("Support / Resistance", f"{selected_row['Floor']} / {selected_row['Ceiling']}")
 
-        # TIER 1: Trend (Row 1) 
-        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_18'], line=dict(color='#00BFFF', width=1.5), name='SMA(18) Fast'), row=1, col=1)
-        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_50'], line=dict(color='#FFA500', width=1.5), name='SMA(50) Slow'), row=1, col=1)
+            st.write("")
 
-        # MACD Signals (Tier 1)
-        fig.add_trace(go.Scatter(x=macd_buys.index, y=macd_buys['Low'] * 0.98, mode='markers', name='MACD Buy', marker=dict(symbol='triangle-up', size=14, color='#00FF00', line=dict(width=1, color='darkgreen'))), row=1, col=1)
-        fig.add_trace(go.Scatter(x=macd_sells.index, y=macd_sells['High'] * 1.02, mode='markers', name='MACD Sell', marker=dict(symbol='triangle-down', size=14, color='#FF0000', line=dict(width=1, color='darkred'))), row=1, col=1)
+            # --- Volume Profile Logic ---
+            bins = 40
+            price_min, price_max = hist_df['Low'].min(), hist_df['High'].max()
+            bin_edges = np.linspace(price_min, price_max, bins + 1)
+            v_profile, _ = np.histogram(hist_df['Close'], bins=bin_edges, weights=hist_df['Volume'])
+            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
 
+            # --- Professional Stacked 3-Tier Chart ---
+            sma_buys = hist_df[hist_df['SMA_Buy']]
+            sma_sells = hist_df[hist_df['SMA_Sell']]
+            macd_buys = hist_df[hist_df['MACD_Buy']]
+            macd_sells = hist_df[hist_df['MACD_Sell']]
 
-        # TIER 2: Market Structure - Bollinger Bands, Candlesticks, Volume bars, & Volume Profile (Row 2)
-        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df[bb_upper_col], mode='lines', line=dict(color='rgba(255, 255, 255, 0.3)', width=1, dash='dash'), name='BB Upper', showlegend=False), row=2, col=1)
-        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df[bb_lower_col], mode='lines', line=dict(color='rgba(255, 255, 255, 0.3)', width=1, dash='dash'), fill='tonexty', fillcolor='rgba(128, 128, 128, 0.1)', name='Bollinger Bands', showlegend=True), row=2, col=1)
-
-        # HIGH CONTRAST Candlesticks
-        fig.add_trace(go.Candlestick(
-            x=hist_df.index, open=hist_df['Open'], high=hist_df['High'], low=hist_df['Low'], close=hist_df['Close'], name='Candlesticks',
-            increasing=dict(line=dict(color='#00FF00', width=1.5), fillcolor='rgba(0, 255, 0, 0.8)'),
-            decreasing=dict(line=dict(color='#FF0000', width=1.5), fillcolor='rgba(255, 0, 0, 0.8)')
-        ), row=2, col=1)
-        
-        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], mode='lines', name='Close Price', line=dict(color='rgba(255, 255, 255, 0.8)', width=1.5)), row=2, col=1)
-        
-        # --- NEW: Standard Volume bars at bottom of Row 2 ---
-        vol_colors = ['rgba(0, 255, 0, 0.2)' if row['Close'] >= row['Open'] else 'rgba(255, 0, 0, 0.2)' for _, row in hist_df.iterrows()]
-        fig.add_trace(go.Bar(
-            x=hist_df.index, y=hist_df['Volume'], marker_color=vol_colors, name='Time Volume', showlegend=False
-        ), row=2, col=1, secondary_y=True)
-
-        # Volume Profile (Horizontal)
-        fig.add_trace(go.Bar(
-            y=bin_centers, x=v_profile, orientation='h', name='Volume Profile',
-            marker_color='rgba(0, 191, 255, 0.2)', showlegend=True,
-            xaxis='x4', yaxis='y2' 
-        ))
-
-        # TIER 3: Momentum - MACD (Row 3)
-        colors = ['#2ca02c' if val >= 0 else '#d62728' for val in hist_df['MACDh_12_26_9']]
-        fig.add_trace(go.Bar(x=hist_df.index, y=hist_df['MACDh_12_26_9'], marker_color=colors, name='MACD Histogram'), row=3, col=1)
-        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACD_12_26_9'], line=dict(color='#00BFFF', width=1.5), name='MACD Line'), row=3, col=1)
-        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACDs_12_26_9'], line=dict(color='#FFA500', width=1.5), name='Signal Line'), row=3, col=1)
-
-        # Styling the Layout
-        fig.update_layout(
-            height=1200, hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            margin=dict(l=10, r=10, t=10, b=10),
-            plot_bgcolor='rgba(0,0,0,0)',
-            xaxis_rangeslider_visible=False,
-            xaxis2_rangeslider_visible=False, 
-            xaxis4=dict(
-                overlaying='x2', side='top', showgrid=False, zeroline=False, 
-                showticklabels=False, range=[0, max(v_profile) * 5] 
+            fig = make_subplots(
+                rows=3, cols=1, 
+                shared_xaxes=True, 
+                vertical_spacing=0.03, 
+                row_heights=[0.20, 0.40, 0.40],
+                specs=[[{"secondary_y": False}], [{"secondary_y": True}], [{"secondary_y": False}]] # Row 2 gets secondary Y
             )
-        )
-        
-        # Gridlines and specific scale for bottom volume bars
-        fig.update_yaxes(title_text="Trend ($)", row=1, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
-        fig.update_yaxes(title_text="Structure", row=2, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
-        # Scale the secondary Y-axis (Volume bars) so they stay at the bottom 20%
-        fig.update_yaxes(range=[0, hist_df['Volume'].max() * 5], showticklabels=False, row=2, col=1, secondary_y=True)
-        fig.update_yaxes(title_text="Momentum", row=3, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
-        fig.update_xaxes(showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
 
-        st.plotly_chart(fig, use_container_width=True)
+            # --- DYNAMIC BOLLINGER BANDS LOOKUP ---
+            bb_upper_col = [col for col in hist_df.columns if col.startswith('BBU')][0]
+            bb_lower_col = [col for col in hist_df.columns if col.startswith('BBL')][0]
+
+            # TIER 1: Trend (Row 1) 
+            fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_18'], line=dict(color='#00BFFF', width=1.5), name='SMA(18) Fast'), row=1, col=1)
+            fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_50'], line=dict(color='#FFA500', width=1.5), name='SMA(50) Slow'), row=1, col=1)
+
+            # MACD Signals (Tier 1)
+            fig.add_trace(go.Scatter(x=macd_buys.index, y=macd_buys['Low'] * 0.98, mode='markers', name='MACD Buy', marker=dict(symbol='triangle-up', size=14, color='#00FF00', line=dict(width=1, color='darkgreen'))), row=1, col=1)
+            fig.add_trace(go.Scatter(x=macd_sells.index, y=macd_sells['High'] * 1.02, mode='markers', name='MACD Sell', marker=dict(symbol='triangle-down', size=14, color='#FF0000', line=dict(width=1, color='darkred'))), row=1, col=1)
+
+
+            # TIER 2: Market Structure - Bollinger Bands, Candlesticks, Volume bars, & Volume Profile (Row 2)
+            fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df[bb_upper_col], mode='lines', line=dict(color='rgba(255, 255, 255, 0.3)', width=1, dash='dash'), name='BB Upper', showlegend=False), row=2, col=1)
+            fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df[bb_lower_col], mode='lines', line=dict(color='rgba(255, 255, 255, 0.3)', width=1, dash='dash'), fill='tonexty', fillcolor='rgba(128, 128, 128, 0.1)', name='Bollinger Bands', showlegend=True), row=2, col=1)
+
+            # HIGH CONTRAST Candlesticks
+            fig.add_trace(go.Candlestick(
+                x=hist_df.index, open=hist_df['Open'], high=hist_df['High'], low=hist_df['Low'], close=hist_df['Close'], name='Candlesticks',
+                increasing=dict(line=dict(color='#00FF00', width=1.5), fillcolor='rgba(0, 255, 0, 0.8)'),
+                decreasing=dict(line=dict(color='#FF0000', width=1.5), fillcolor='rgba(255, 0, 0, 0.8)')
+            ), row=2, col=1)
+            
+            fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], mode='lines', name='Close Price', line=dict(color='rgba(255, 255, 255, 0.8)', width=1.5)), row=2, col=1)
+            
+            # --- NEW: Standard Volume bars at bottom of Row 2 ---
+            vol_colors = ['rgba(0, 255, 0, 0.2)' if row['Close'] >= row['Open'] else 'rgba(255, 0, 0, 0.2)' for _, row in hist_df.iterrows()]
+            fig.add_trace(go.Bar(
+                x=hist_df.index, y=hist_df['Volume'], marker_color=vol_colors, name='Time Volume', showlegend=False
+            ), row=2, col=1, secondary_y=True)
+
+            # Volume Profile (Horizontal)
+            fig.add_trace(go.Bar(
+                y=bin_centers, x=v_profile, orientation='h', name='Volume Profile',
+                marker_color='rgba(0, 191, 255, 0.2)', showlegend=True,
+                xaxis='x4', yaxis='y2' 
+            ))
+
+            # TIER 3: Momentum - MACD (Row 3)
+            colors = ['#2ca02c' if val >= 0 else '#d62728' for val in hist_df['MACDh_12_26_9']]
+            fig.add_trace(go.Bar(x=hist_df.index, y=hist_df['MACDh_12_26_9'], marker_color=colors, name='MACD Histogram'), row=3, col=1)
+            fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACD_12_26_9'], line=dict(color='#00BFFF', width=1.5), name='MACD Line'), row=3, col=1)
+            fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['MACDs_12_26_9'], line=dict(color='#FFA500', width=1.5), name='Signal Line'), row=3, col=1)
+
+            # Styling the Layout
+            fig.update_layout(
+                height=1200, hovermode="x unified",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(l=10, r=10, t=10, b=10),
+                plot_bgcolor='rgba(0,0,0,0)',
+                xaxis_rangeslider_visible=False,
+                xaxis2_rangeslider_visible=False, 
+                xaxis4=dict(
+                    overlaying='x2', side='top', showgrid=False, zeroline=False, 
+                    showticklabels=False, range=[0, max(v_profile) * 5] 
+                )
+            )
+            
+            # Gridlines and specific scale for bottom volume bars
+            fig.update_yaxes(title_text="Trend ($)", row=1, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
+            fig.update_yaxes(title_text="Structure", row=2, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
+            # Scale the secondary Y-axis (Volume bars) so they stay at the bottom 20%
+            fig.update_yaxes(range=[0, hist_df['Volume'].max() * 5], showticklabels=False, row=2, col=1, secondary_y=True)
+            fig.update_yaxes(title_text="Momentum", row=3, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
+            fig.update_xaxes(showgrid=True, gridcolor='rgba(128, 128, 128, 0.2)')
+
+            st.plotly_chart(fig, use_container_width=True)
+
+# ==========================================
+# TAB: FEATURE GUIDE
+# ==========================================
+with tab_guide:
+    st.header("📖 How to use this Terminal")
+    st.write("This application provides a multi-dimensional view of market data to assist with **swing trading (multi-week holds).**")
+    
+    with st.expander("📊 Tier 1: Trend Analysis (SMA & Signals)"):
+        st.markdown("""
+        * **SMA (18) vs SMA (50):** We look for a 'Golden Cross' where the blue line (18) crosses above the orange line (50).
+        * **Buy/Sell Triangles:** These are triggered by **MACD Crossovers**. A green triangle indicates that momentum has shifted upwards.
+        * **Strategy:** For multi-week holds, stay long as long as the Price remains above the 50-day SMA.
+        """)
+
+    with st.expander("🕯️ Tier 2: Market Structure (Candlesticks & Volume Profile)"):
+        st.markdown("""
+        * **Candlesticks:** Each candle tells the story of one day's battle. Green candles show buyer dominance; long lower wicks show price rejection.
+        * **Volume Profile (Side Bars):** These bars represent **Value**. High Volume Nodes (long horizontal bars) act as magnets or strong floors. 
+        * **Volume (Bottom Bars):** These represent **Effort**. Look for high volume on green days to confirm institutional buying.
+        * **Bollinger Bands:** Represents volatility. When price hits the 'Upper Band', the stock is statistically stretched.
+        """)
+
+    with st.expander("🚀 Tier 3: Momentum (MACD & RSI)"):
+        st.markdown("""
+        * **MACD Histogram:** Shows the distance between the MACD line and Signal line. When the bars turn bright green, momentum is accelerating.
+        * **RSI (14):** A score from 0-100. 
+            * **> 70:** Overbought (danger zone). 
+            * **< 30:** Oversold (potential value).
+        * **ADX:** Measures **Trend Strength**. If ADX is > 25, the trend is powerful regardless of direction.
+        """)
+
+    with st.expander("🛡️ Support & Resistance (Floor/Ceiling)"):
+        st.markdown("""
+        * **Floor:** The lowest price reached in the last 20 periods. This is your logical **Stop Loss** level.
+        * **Ceiling:** The highest price reached in the last 20 periods. Breaking this level signifies a 'new high' breakout.
+        """)
