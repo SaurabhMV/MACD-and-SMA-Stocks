@@ -228,12 +228,22 @@ with tab_dashboard:
 
             st.write("")
 
-            # --- Volume Profile Logic ---
+            # --- Volume Profile Logic & Fix ---
             bins = 40
             price_min, price_max = hist_df['Low'].min(), hist_df['High'].max()
             bin_edges = np.linspace(price_min, price_max, bins + 1)
             v_profile, _ = np.histogram(hist_df['Close'], bins=bin_edges, weights=hist_df['Volume'])
             bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+
+            # Formatting Volume text so it reads '1.2M' or '500K' instead of massive raw numbers
+            formatted_volume = []
+            for vol in v_profile:
+                if vol >= 1_000_000:
+                    formatted_volume.append(f"{vol/1_000_000:.1f}M")
+                elif vol >= 1_000:
+                    formatted_volume.append(f"{vol/1_000:.1f}K")
+                else:
+                    formatted_volume.append(str(int(vol)))
 
             # --- Professional Stacked 3-Tier Chart ---
             sma_buys = hist_df[hist_df['SMA_Buy']]
@@ -246,7 +256,7 @@ with tab_dashboard:
                 shared_xaxes=True, 
                 vertical_spacing=0.03, 
                 row_heights=[0.20, 0.40, 0.40],
-                specs=[[{"secondary_y": False}], [{"secondary_y": True}], [{"secondary_y": False}]] # Row 2 gets secondary Y
+                specs=[[{"secondary_y": False}], [{"secondary_y": True}], [{"secondary_y": False}]] 
             )
 
             # --- DYNAMIC BOLLINGER BANDS LOOKUP ---
@@ -275,17 +285,26 @@ with tab_dashboard:
             
             fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], mode='lines', name='Close Price', line=dict(color='rgba(255, 255, 255, 0.8)', width=1.5)), row=2, col=1)
             
-            # --- NEW: Standard Volume bars at bottom of Row 2 ---
+            # Standard Volume bars at bottom of Row 2 
             vol_colors = ['rgba(0, 255, 0, 0.2)' if row['Close'] >= row['Open'] else 'rgba(255, 0, 0, 0.2)' for _, row in hist_df.iterrows()]
             fig.add_trace(go.Bar(
                 x=hist_df.index, y=hist_df['Volume'], marker_color=vol_colors, name='Time Volume', showlegend=False
             ), row=2, col=1, secondary_y=True)
 
-            # Volume Profile (Horizontal)
+            # OVERHAULED Volume Profile (Horizontal)
             fig.add_trace(go.Bar(
-                y=bin_centers, x=v_profile, orientation='h', name='Volume Profile',
-                marker_color='rgba(0, 191, 255, 0.2)', showlegend=True,
-                xaxis='x4', yaxis='y2' 
+                y=bin_centers, 
+                x=v_profile, 
+                orientation='h', 
+                name='Volume Profile',
+                marker_color='rgba(0, 191, 255, 0.2)', 
+                showlegend=True,
+                xaxis='x4', 
+                yaxis='y2',
+                text=formatted_volume,             # Puts the clean numbers inside the bars
+                textposition='inside',             # Keeps them neatly tucked in
+                insidetextanchor='end',            # Aligns them to the edge of the bar
+                hovertemplate='<b>Price:</b> $%{y:.2f}<br><b>Volume:</b> %{text}<extra></extra>' # Forces Plotly to show hover
             ))
 
             # TIER 3: Momentum - MACD (Row 3)
